@@ -83,7 +83,7 @@ const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturda
 const SH=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const KEY='league-scheduler-v2';
 let uid=1; const nid=()=>'x'+(uid++)+Math.random().toString(36).slice(2,6);
-
+ 
 const DEFAULT={
  name:'Adult League 2026-27', start:'2026-09-13', end:'2027-03-21', cap:8, pcap:0, playoffTeams:4,
  divisions:[{id:'d1',name:'Open',days:'',start:'',end:'',cap:'',pcap:''},
@@ -95,9 +95,9 @@ for(let i=1;i<=8;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d1',off:''
 for(let i=9;i<=13;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d2',off:'',pcap:''});
 [[0,'21:30'],[0,'23:00'],[1,'23:00'],[2,'23:00'],[3,'23:00'],[4,'23:00']]
  .forEach((x,i)=>DEFAULT.lines.push({id:'l'+i,day:x[0],time:x[1],mins:80,rink:'Rocky',use:'games',from:'',until:''}));
-
+ 
 let S=JSON.parse(JSON.stringify(DEFAULT)), tab='setup', msg='', showWhat='all';
-
+ 
 /* ---------------- dates ---------------- */
 const pd=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c)};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -114,7 +114,7 @@ const tPcap=t=>{const d=S.divisions.find(x=>x.id===t.div);
  if(t.pcap!==''&&t.pcap!=null)return Math.max(0,+t.pcap||0);
  return d?dPcap(d):0;};
 const dayOK=(d,dayName)=>!d.days.trim()||d.days.toLowerCase().includes(dayName.toLowerCase());
-
+ 
 /* ---------------- ice expansion ---------------- */
 function allSlots(){
  const out=[];
@@ -132,7 +132,7 @@ function allSlots(){
  out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:a.time>b.time?1:0));
  return out;
 }
-
+ 
 /* ---------------- round robin (same index maths as the workbook) ---------------- */
 function candidates(teams,nRounds){
  const n=teams.length, pad=n%2?n+1:n, pairs=pad/2, out=[];
@@ -149,7 +149,7 @@ function candidates(teams,nRounds){
  }
  return out;
 }
-
+ 
 /* ---------------- the whole build ---------------- */
 function build(){
  const problems=[],slots=allSlots();
@@ -165,7 +165,7 @@ function build(){
   return {...d,teams,cap,perRound,target,po,weight:target+po,pneed};
  });
  dv.forEach(d=>{if(d.teams.length<2)problems.push(d.name+' has fewer than 2 teams')});
-
+ 
  // share each pool out among the divisions eligible that day, weighted by workload
  function share(pool,wkey){
   const rank={},by={}; dv.forEach(d=>by[d.id]=[]);
@@ -190,8 +190,7 @@ function build(){
   return by;
  }
  const bydiv=share(gameSlots,'weight');
- const byprac=share(pracSlots,'pneed');
-
+ 
  // pairings, capped so nobody passes their division's ceiling
  const played={}; S.teams.forEach(t=>played[t.id]=0);
  const games=[];
@@ -217,27 +216,42 @@ function build(){
   d.short=Math.max(0,d.weight-d.slots);
   if(d.short)problems.push(d.name+' is short '+d.short+' game slot'+(d.short>1?'s':''));
  });
-
- // practices: one team per slot, rotating through whoever still needs them
+ 
+ // practices
  const practices=[]; const pdone={}; S.teams.forEach(t=>pdone[t.id]=0);
+ const owned={}; dv.forEach(d=>owned[d.id]=[]); const sharedPrac=[];
+ pracSlots.forEach(s=>{
+  const line=S.lines.find(l=>l.id===s.lineId)||{};
+  s.cap=Math.max(1,Math.min(4,+(line.slotTeams||1)));
+  s.only=String(line.only||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+  const pd=line.pdiv||'';
+  if(pd&&dv.some(d=>d.id===pd)){s.div=pd;owned[pd].push(s)} else sharedPrac.push(s);
+ });
+ const byprac=share(sharedPrac,'pneed');
  dv.forEach(d=>{
-  const pool=byprac[d.id]||[]; d.pslots=pool.length;
+  const pool=(owned[d.id]||[]).concat(byprac[d.id]||[])
+   .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
+  d.pslots=pool.reduce((n,s)=>n+s.cap,0);
   d.pshort=Math.max(0,d.pneed-d.pslots);
-  if(d.pshort)problems.push(d.name+' is short '+d.pshort+' practice slot'+(d.pshort>1?'s':''));
+  if(d.pshort)problems.push(d.name+' is short '+d.pshort+' practice place'+(d.pshort>1?'s':''));
   if(!d.pneed||!pool.length)return;
-  const order=[]; const want={}; d.teams.forEach(t=>want[t.id]=tPcap(t));
-  let guard=0;
-  while(order.length<d.pneed&&guard++<5000){
-   let placed=false;
-   d.teams.forEach(t=>{if(want[t.id]>0&&order.length<d.pneed){order.push(t);want[t.id]--;placed=true}});
-   if(!placed)break;
-  }
-  const stride=Math.max(1,pool.length/Math.max(1,d.pneed));
-  order.forEach((t,j)=>{
-   const s=pool[Math.round(j*stride)]; if(!s)return;
-   pdone[t.id]++;
-   practices.push({id:'pr'+d.id+'_'+j,divId:d.id,div:d.name,teamId:t.id,team:t.name,
-    date:s.date,day:s.day,time:s.time,rink:s.rink});
+  const want={}; d.teams.forEach(t=>want[t.id]=tPcap(t));
+  let remaining=d.pneed;
+  pool.forEach((s,i)=>{
+   if(remaining<=0)return;
+   const place=Math.min(s.cap,Math.max(1,Math.ceil(remaining/(pool.length-i))));
+   const on=[];
+   for(let k=0;k<place;k++){
+    const cands=d.teams.filter(t=>want[t.id]>0&&on.indexOf(t.id)<0&&
+     (!s.only.length||s.only.indexOf(t.name.toLowerCase())>=0));
+    if(!cands.length)break;
+    cands.sort((x,y)=>(want[y.id]-want[x.id])||(pdone[x.id]-pdone[y.id]));
+    const t=cands[0];
+    want[t.id]--; remaining--; on.push(t.id); pdone[t.id]++;
+    practices.push({id:'pr'+d.id+'_'+i+'_'+k,divId:d.id,div:d.name,teamId:t.id,team:t.name,
+     slotKey:s.date+'|'+s.time+'|'+(s.rink||''),
+     date:s.date,day:s.day,time:s.time,rink:s.rink});
+   }
   });
  });
  practices.forEach(p=>{
@@ -249,7 +263,7 @@ function build(){
   p.conflicts=c;
  });
  practices.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
-
+ 
  // spread each division's games across the ice it was given
  games.forEach(g=>{
   const d=dv.find(x=>x.id===g.divId), pool=bydiv[g.divId]||[];
@@ -274,7 +288,7 @@ function build(){
   over:S.teams.filter(t=>{const d=dv.find(x=>x.id===t.div);return d&&played[t.id]>d.cap}).length,
   lo:cnt.length?Math.min(...cnt):0, hi:cnt.length?Math.max(...cnt):0};
 }
-
+ 
 function standings(games){
  const out={};
  S.divisions.forEach(d=>{
@@ -313,7 +327,7 @@ function pwin(divId,n){
  const gm=b.find(x=>x.n===n); if(!gm)return null;
  return +s.h>+s.a?gm.home:+s.a>+s.h?gm.away:null;
 }
-
+ 
 /* ---------------- storage & files ---------------- */
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));msg='Saved '+new Date().toLocaleTimeString()}
  catch(e){msg='Could not save locally'}}
@@ -345,7 +359,7 @@ function importJSON(ev){
  r.readAsText(f);
 }
 function reset(){if(confirm('Reset everything to the starting setup?')){S=JSON.parse(JSON.stringify(DEFAULT));save();render()}}
-
+ 
 /* ---------------- render ---------------- */
 function render(){
  const R=build(), st=standings(R.games);
@@ -377,18 +391,18 @@ function render(){
  h+='<div class="note" style="text-align:center">'+esc(msg)+'</div>';
  document.getElementById('root').innerHTML=h;
 }
-
+ 
 function setupTab(R){
  let h='<div class="card"><h2>League defaults</h2><p class="hint">Any division can override these.</p>'+
   '<div class="field"><label>League name</label><input value="'+esc(S.name)+'" onchange="set(\'name\',this.value)"></div>'+
   '<div class="g2"><div class="field"><label>Season start</label><input type="date" value="'+S.start+
-   '" onchange="set(\'start\',this.value)"></div>'+
+   '" onblur="set(\'start\',this.value)"></div>'+
   '<div class="field"><label>Season end</label><input type="date" value="'+S.end+
-   '" onchange="set(\'end\',this.value)"></div></div>'+
+   '" onblur="set(\'end\',this.value)"></div></div>'+
   '<div class="g2"><div class="field"><label>Game cap per team</label><input type="number" value="'+S.cap+
-   '" onchange="set(\'cap\',Math.max(1,+this.value||1))"></div>'+
+   '" onblur="set(\'cap\',Math.max(1,+this.value||1))"></div>'+
   '<div class="field"><label>Practices per team</label><input type="number" value="'+S.pcap+
-   '" onchange="set(\'pcap\',Math.max(0,+this.value||0))"></div></div>'+
+   '" onblur="set(\'pcap\',Math.max(0,+this.value||0))"></div></div>'+
   '<div class="g2"><div class="field"><label>Playoff teams per division</label><select onchange="set(\'playoffTeams\',+this.value)">'+
    [2,4,8].map(n=>'<option value="'+n+'"'+(S.playoffTeams===n?' selected':'')+'>'+n+'</option>').join('')+
    '</select></div></div></div>';
@@ -404,13 +418,13 @@ function setupTab(R){
     esc(d.days)+'" onchange="dset(\''+d.id+'\',\'days\',this.value)"></div>'+
    '<div class="g3" style="margin-top:7px">'+
    '<div class="field" style="margin:0"><label>Starts</label><input type="date" value="'+(d.start||'')+
-    '" onchange="dset(\''+d.id+'\',\'start\',this.value)"></div>'+
+    '" onblur="dset(\''+d.id+'\',\'start\',this.value)"></div>'+
    '<div class="field" style="margin:0"><label>Ends</label><input type="date" value="'+(d.end||'')+
-    '" onchange="dset(\''+d.id+'\',\'end\',this.value)"></div>'+
+    '" onblur="dset(\''+d.id+'\',\'end\',this.value)"></div>'+
    '<div class="field" style="margin:0"><label>Game cap</label><input type="number" placeholder="'+S.cap+'" value="'+
-    (d.cap||'')+'" onchange="dset(\''+d.id+'\',\'cap\',this.value)"></div></div>'+
+    (d.cap||'')+'" onblur="dset(\''+d.id+'\',\'cap\',this.value)"></div></div>'+
    '<div class="field" style="margin-top:7px"><label>Practices per team</label><input type="number" placeholder="'+
-    S.pcap+'" value="'+(d.pcap===''||d.pcap==null?'':d.pcap)+'" onchange="dset(\''+d.id+'\',\'pcap\',this.value)"></div>'+
+    S.pcap+'" value="'+(d.pcap===''||d.pcap==null?'':d.pcap)+'" onblur="dset(\''+d.id+'\',\'pcap\',this.value)"></div>'+
    '<div class="note">'+(dd.teams?dd.teams.length:0)+' teams &middot; '+(dd.target||0)+' games in '+
     (dd.slots||0)+' slots'+(dd.short?' <b style="color:var(--red)">short '+dd.short+'</b>':'')+
     (dd.pneed?' &middot; '+dd.pneed+' practices in '+(dd.pslots||0)+' slots'+
@@ -421,9 +435,9 @@ function setupTab(R){
  S.closures.forEach(c=>{
   h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
    '<div class="field" style="flex:1;margin:0"><label>From</label><input type="date" value="'+c.from+
-    '" onchange="cset(\''+c.id+'\',\'from\',this.value)"></div>'+
+    '" onblur="cset(\''+c.id+'\',\'from\',this.value)"></div>'+
    '<div class="field" style="flex:1;margin:0"><label>To</label><input type="date" value="'+(c.to||'')+
-    '" onchange="cset(\''+c.id+'\',\'to\',this.value)"></div>'+
+    '" onblur="cset(\''+c.id+'\',\'to\',this.value)"></div>'+
    '<button class="del" onclick="cdel(\''+c.id+'\')">&times;</button></div>'+
    '<div class="field" style="margin:7px 0 0"><input placeholder="What is it?" value="'+esc(c.note||'')+
     '" onchange="cset(\''+c.id+'\',\'note\',this.value)"></div></div>';
@@ -433,7 +447,7 @@ function setupTab(R){
   :'<div class="good">Every division has enough ice for its schedule and its bracket.</div>';
  return h;
 }
-
+ 
 function teamsTab(){
  let h='<div class="card"><h2>Teams</h2><p class="hint">Blackout day blocks that weekday for this team only.</p>';
  S.divisions.forEach(d=>{
@@ -452,7 +466,7 @@ function teamsTab(){
      '</select></div></div>'+
     '<div class="field" style="margin-top:7px"><label>Practices (blank = division default)</label>'+
     '<input type="number" placeholder="'+tPcap(t)+'" value="'+(t.pcap===''||t.pcap==null?'':t.pcap)+
-    '" onchange="tset(\''+t.id+'\',\'pcap\',this.value)"></div></div>';
+    '" onblur="tset(\''+t.id+'\',\'pcap\',this.value)"></div></div>';
   });
   h+='<button class="addbtn" onclick="tadd(\''+d.id+'\')">+ Add team to '+esc(d.name)+'</button>';
  });
@@ -463,17 +477,18 @@ function teamsTab(){
     S.teams.map(t=>'<option value="'+t.id+'"'+(b.team===t.id?' selected':'')+'>'+esc(t.name)+'</option>').join('')+
     '</select></div>'+
    '<div class="field" style="flex:1;margin:0"><label>Date</label><input type="date" value="'+(b.date||'')+
-    '" onchange="bset(\''+b.id+'\',\'date\',this.value)"></div>'+
+    '" onblur="bset(\''+b.id+'\',\'date\',this.value)"></div>'+
    '<button class="del" onclick="bdel(\''+b.id+'\')">&times;</button></div></div>';
  });
  h+='<button class="addbtn" onclick="badd()">+ Add blackout date</button></div>';
  return h;
 }
-
+ 
 function iceTab(){
  const sl=allSlots(), gs=sl.filter(x=>x.use!=='practice').length, ps=sl.length-gs;
  let h='<div class="card"><h2>Weekly ice</h2><p class="hint">'+gs+' game slots and '+ps+
-  ' practice slots. The two pools are kept separate and each is shared out by workload.</p>';
+  ' practice slots, kept separate. Give a practice line a division to reserve it, set how many teams '+
+  'share the ice, and name specific teams if that line belongs to them.</p>';
  S.lines.forEach(l=>{
   const n=sl.filter(x=>x.lineId===l.id).length;
   h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
@@ -482,7 +497,7 @@ function iceTab(){
    '<div class="field" style="flex:1;margin:0"><label>Start</label><input type="time" value="'+l.time+
     '" onchange="lset(\''+l.id+'\',\'time\',this.value)"></div>'+
    '<div class="field" style="flex:.6;margin:0"><label>Min</label><input type="number" step="5" value="'+l.mins+
-    '" onchange="lset(\''+l.id+'\',\'mins\',+this.value||60)"></div>'+
+    '" onblur="lset(\''+l.id+'\',\'mins\',+this.value||60)"></div>'+
    '<button class="del" onclick="ldel(\''+l.id+'\')">&times;</button></div>'+
    '<div class="g3" style="margin-top:7px">'+
    '<div class="field" style="margin:0"><label>Used for</label><select onchange="lset(\''+l.id+'\',\'use\',this.value)">'+
@@ -491,18 +506,32 @@ function iceTab(){
    '<div class="field" style="margin:0"><label>Rink</label><input value="'+esc(l.rink||'')+
     '" onchange="lset(\''+l.id+'\',\'rink\',this.value)"></div>'+
    '<div class="field" style="margin:0"><label>From</label><input type="date" value="'+(l.from||'')+
-    '" onchange="lset(\''+l.id+'\',\'from\',this.value)"></div>'+
+    '" onblur="lset(\''+l.id+'\',\'from\',this.value)"></div>'+
    '<div class="field" style="margin:0"><label>Until</label><input type="date" value="'+(l.until||'')+
-    '" onchange="lset(\''+l.id+'\',\'until\',this.value)"></div></div>'+
-   '<div class="note">'+SH[l.day]+' '+fmtT(l.time)+' &middot; '+((l.use||'games')==='practice'?'practice':'game')+
-    ' ice &rarr; '+n+' dates</div></div>';
+    '" onblur="lset(\''+l.id+'\',\'until\',this.value)"></div></div>'+
+   ((l.use==='practice')?
+    ('<div class="g3" style="margin-top:7px">'+
+     '<div class="field" style="margin:0"><label>Division</label><select onchange="lset(\''+l.id+'\',\'pdiv\',this.value)">'+
+      '<option value="">any (shared)</option>'+
+      S.divisions.map(d=>'<option value="'+d.id+'"'+(l.pdiv===d.id?' selected':'')+'>'+esc(d.name)+'</option>').join('')+
+      '</select></div>'+
+     '<div class="field" style="margin:0"><label>Teams on the ice</label><select onchange="lset(\''+l.id+'\',\'slotTeams\',+this.value)">'+
+      [1,2,3,4].map(k=>'<option value="'+k+'"'+((+l.slotTeams||1)===k?' selected':'')+'>'+k+'</option>').join('')+
+      '</select></div>'+
+     '<div class="field" style="margin:0"><label>Only these teams</label><input placeholder="any team" value="'+
+      esc(l.only||'')+'" onchange="lset(\''+l.id+'\',\'only\',this.value)"></div></div>')
+    :'')+
+   '<div class="note">'+SH[l.day]+' '+fmtT(l.time)+' &middot; '+((l.use||'games')==='practice'?
+    'practice ice for '+(l.pdiv?esc((S.divisions.find(d=>d.id===l.pdiv)||{}).name||'?'):'any division')+
+    ', '+(+l.slotTeams||1)+' team'+((+l.slotTeams||1)>1?'s':'')+' per slot':'game ice')+
+    ' &rarr; '+n+' dates</div></div>';
  });
  h+='<button class="addbtn" onclick="ladd()">+ Add weekly line</button></div>';
  h+='<div class="card"><h2>One-off extra ice</h2><p class="hint">Slots outside the weekly pattern.</p>';
  S.extras.forEach(x=>{
   h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
    '<div class="field" style="flex:1;margin:0"><label>Date</label><input type="date" value="'+(x.date||'')+
-    '" onchange="xset(\''+x.id+'\',\'date\',this.value)"></div>'+
+    '" onblur="xset(\''+x.id+'\',\'date\',this.value)"></div>'+
    '<div class="field" style="flex:1;margin:0"><label>Start</label><input type="time" value="'+x.time+
     '" onchange="xset(\''+x.id+'\',\'time\',this.value)"></div>'+
    '<button class="del" onclick="xdel(\''+x.id+'\')">&times;</button></div></div>';
@@ -510,11 +539,18 @@ function iceTab(){
  h+='<button class="addbtn" onclick="xadd()">+ Add one-off slot</button></div>';
  return h;
 }
-
+ 
 function schedTab(R){
  const rows=[];
  if(showWhat!=='practices')R.games.forEach(g=>rows.push({t:'Game',...g}));
- if(showWhat!=='games')R.practices.forEach(p=>rows.push({t:'Practice',...p,home:p.team,away:''}));
+ if(showWhat!=='games'){
+  const grp={};
+  R.practices.forEach(p=>{(grp[p.slotKey]=grp[p.slotKey]||[]).push(p)});
+  Object.values(grp).forEach(g=>{const f=g[0];
+   rows.push({t:'Practice',id:f.id,div:f.div,date:f.date,day:f.day,time:f.time,rink:f.rink,
+    home:g.map(x=>x.team).join(' / '),away:'',
+    conflicts:[...new Set(g.flatMap(x=>x.conflicts||[]))]})});
+ }
  rows.sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:
   ((a.time||'')<(b.time||'')?-1:1));
  let h='<div class="card"><h2>Schedule</h2><p class="hint">Enter scores as games are played. '+
@@ -538,7 +574,7 @@ function schedTab(R){
   '<button class="btn" onclick="window.print()">Print</button></div></div>';
  return h;
 }
-
+ 
 function standTab(st,R){
  let h='';
  S.divisions.forEach(d=>{
@@ -559,7 +595,7 @@ function standTab(st,R){
  });
  return h;
 }
-
+ 
 function poTab(){
  let h='';
  S.divisions.forEach(d=>{
@@ -579,7 +615,7 @@ function poTab(){
  h+='<div class="note">Divisions never meet, so each crowns its own champion.</div>';
  return h;
 }
-
+ 
 function shareTab(){
  return '<div class="card"><h2>Share and back up</h2>'+
   '<p class="hint">Your league is saved in this browser only. Nobody else sees your data, and clearing '+
@@ -597,7 +633,7 @@ function shareTab(){
   '<p class="note"><b>Other rinks.</b> Send them the link on its own. They start from the default setup '+
   'and build their own league. Nothing is shared between browsers.</p></div>';
 }
-
+ 
 /* ---------------- mutations ---------------- */
 const set=(k,v)=>{S[k]=v;save();render()};
 const dset=(i,k,v)=>{S.divisions.find(d=>d.id===i)[k]=v;save();render()};
@@ -607,7 +643,7 @@ const ddel=i=>{if(S.divisions.length<2)return;S.divisions=S.divisions.filter(d=>
 const tadd=d=>{S.teams.push({id:nid(),name:'New team',div:d,off:''});save();render()};
 const tset=(i,k,v)=>{S.teams.find(t=>t.id===i)[k]=v;save();render()};
 const tdel=i=>{S.teams=S.teams.filter(t=>t.id!==i);S.blackouts=S.blackouts.filter(b=>b.team!==i);save();render()};
-const ladd=()=>{S.lines.push({id:nid(),day:0,time:'21:00',mins:80,rink:'',use:'games',from:'',until:''});save();render()};
+const ladd=()=>{S.lines.push({id:nid(),day:0,time:'21:00',mins:80,rink:'',use:'games',pdiv:'',slotTeams:1,only:'',from:'',until:''});save();render()};
 const lset=(i,k,v)=>{S.lines.find(l=>l.id===i)[k]=v;save();render()};
 const ldel=i=>{S.lines=S.lines.filter(l=>l.id!==i);save();render()};
 const xadd=()=>{S.extras.push({id:nid(),date:S.start,time:'20:00',mins:80,rink:'',use:'games'});save();render()};
@@ -621,7 +657,11 @@ const bset=(i,k,v)=>{S.blackouts.find(b=>b.id===i)[k]=v;save();render()};
 const bdel=i=>{S.blackouts=S.blackouts.filter(b=>b.id!==i);save();render()};
 const scset=(g,k,v)=>{S.scores[g]=S.scores[g]||{h:'',a:''};S.scores[g][k]=v;save();render()};
 const poset=(g,k,v)=>{S.po[g]=S.po[g]||{h:'',a:''};S.po[g][k]=v;save();render()};
-
+ 
 load(); render();
 </script>
 </body></html>
+ 
+
+
+
