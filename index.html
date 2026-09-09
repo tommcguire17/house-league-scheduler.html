@@ -83,7 +83,7 @@ const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturda
 const SH=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const KEY='league-scheduler-v2';
 let uid=1; const nid=()=>'x'+(uid++)+Math.random().toString(36).slice(2,6);
- 
+
 const DEFAULT={
  name:'Adult League 2026-27', start:'2026-09-13', end:'2027-03-21', cap:8, pcap:0, playoffTeams:4,
  divisions:[{id:'d1',name:'Open',days:'',start:'',end:'',cap:'',pcap:''},
@@ -95,9 +95,9 @@ for(let i=1;i<=8;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d1',off:''
 for(let i=9;i<=13;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d2',off:'',pcap:''});
 [[0,'21:30'],[0,'23:00'],[1,'23:00'],[2,'23:00'],[3,'23:00'],[4,'23:00']]
  .forEach((x,i)=>DEFAULT.lines.push({id:'l'+i,day:x[0],time:x[1],mins:80,rink:'Rocky',use:'games',from:'',until:''}));
- 
-let S=JSON.parse(JSON.stringify(DEFAULT)), tab='setup', msg='', showWhat='all';
- 
+
+let S=JSON.parse(JSON.stringify(DEFAULT)), tab='setup', msg='', showWhat='all', showTeam='';
+
 /* ---------------- dates ---------------- */
 const pd=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c)};
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
@@ -105,6 +105,7 @@ const fmt=s=>{if(!s)return'';const d=pd(s);return (d.getMonth()+1)+'/'+d.getDate
 const fmtT=t=>{if(!t)return'';let[h,m]=t.split(':').map(Number);const ap=h>=12?'pm':'am';
  h=h%12===0?12:h%12;return h+':'+String(m).padStart(2,'0')+ap};
 const closed=s=>S.closures.some(c=>{const to=c.to&&c.to>=c.from?c.to:c.from;return c.from&&s>=c.from&&s<=to});
+const weekOf=d=>{const x=pd(d);x.setDate(x.getDate()-((x.getDay()+6)%7));return iso(x)};
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const dStart=d=>d.start&&d.start>S.start?d.start:S.start;
 const dEnd=d=>d.end&&d.end<S.end?d.end:S.end;
@@ -114,7 +115,7 @@ const tPcap=t=>{const d=S.divisions.find(x=>x.id===t.div);
  if(t.pcap!==''&&t.pcap!=null)return Math.max(0,+t.pcap||0);
  return d?dPcap(d):0;};
 const dayOK=(d,dayName)=>!d.days.trim()||d.days.toLowerCase().includes(dayName.toLowerCase());
- 
+
 /* ---------------- ice expansion ---------------- */
 function allSlots(){
  const out=[];
@@ -132,7 +133,7 @@ function allSlots(){
  out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:a.time>b.time?1:0));
  return out;
 }
- 
+
 /* ---------------- round robin (same index maths as the workbook) ---------------- */
 function candidates(teams,nRounds){
  const n=teams.length, pad=n%2?n+1:n, pairs=pad/2, out=[];
@@ -149,7 +150,7 @@ function candidates(teams,nRounds){
  }
  return out;
 }
- 
+
 /* ---------------- the whole build ---------------- */
 function build(){
  const problems=[],slots=allSlots();
@@ -165,7 +166,7 @@ function build(){
   return {...d,teams,cap,perRound,target,po,weight:target+po,pneed};
  });
  dv.forEach(d=>{if(d.teams.length<2)problems.push(d.name+' has fewer than 2 teams')});
- 
+
  // share each pool out among the divisions eligible that day, weighted by workload
  function share(pool,wkey){
   const rank={},by={}; dv.forEach(d=>by[d.id]=[]);
@@ -177,20 +178,22 @@ function build(){
    const n=daysWith.filter(dn=>dayOK(d,dn)).length;
    claim[d.id]=n?Math.max(1,Math.round(d[wkey]*daysWith.length/n)):0;
   });
+  // walk the ice in date order and hand each slot to whichever eligible division
+  // is furthest behind its fair share. Keeps divisions level week by week.
+  const got={}; dv.forEach(d=>got[d.id]=0);
   pool.forEach(s=>{
-   const dn=DAYS[s.day]; rank[dn]=(rank[dn]||0)+1;
+   const dn=DAYS[s.day];
    const elig=dv.filter(d=>d[wkey]>0&&claim[d.id]>0&&dayOK(d,dn)&&s.date>=dStart(d)&&s.date<=dEnd(d));
-   const tot=elig.reduce((n,d)=>n+claim[d.id],0);
-   if(!tot)return;
-   const pick=((rank[dn]-1)*101)%tot+1;
-   let acc=0,chosen=elig[elig.length-1].id;
-   for(const d of elig){acc+=claim[d.id]; if(acc>=pick){chosen=d.id;break}}
-   s.div=chosen; by[chosen].push(s);
+   if(!elig.length)return;
+   let chosen=elig[0],best=Infinity;
+   elig.forEach(d=>{const sc=(got[d.id]+1)/claim[d.id];
+    if(sc<best-1e-12||(Math.abs(sc-best)<1e-12&&claim[d.id]>claim[chosen.id])){best=sc;chosen=d}});
+   got[chosen.id]++; s.div=chosen.id; by[chosen.id].push(s);
   });
   return by;
  }
  const bydiv=share(gameSlots,'weight');
- 
+
  // pairings, capped so nobody passes their division's ceiling
  const played={}; S.teams.forEach(t=>played[t.id]=0);
  const games=[];
@@ -216,7 +219,7 @@ function build(){
   d.short=Math.max(0,d.weight-d.slots);
   if(d.short)problems.push(d.name+' is short '+d.short+' game slot'+(d.short>1?'s':''));
  });
- 
+
  // practices
  const practices=[]; const pdone={}; S.teams.forEach(t=>pdone[t.id]=0);
  const owned={}; dv.forEach(d=>owned[d.id]=[]); const sharedPrac=[];
@@ -263,12 +266,46 @@ function build(){
   p.conflicts=c;
  });
  practices.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
- 
- // spread each division's games across the ice it was given
+
+ // place games week by week: a division never takes more slots in a week than its
+ // teams can fill without someone playing twice
+ let doubles=0;
+ dv.forEach(d=>{
+  const pool=bydiv[d.id]||[]; if(!pool.length)return;
+  let left=games.filter(g=>g.divId===d.id);
+  const weeks={}; pool.forEach(s=>{const w=weekOf(s.date);(weeks[w]=weeks[w]||[]).push(s)});
+  const wk=Object.keys(weeks).sort();
+  const maxWeek=Math.max(1,Math.floor(d.teams.length/2));
+  const need=Math.ceil(left.length/maxWeek);
+  if(need>wk.length)problems.push(d.name+' needs '+need+' weeks to give every team '+d.cap+
+   ' games one per week, but only '+wk.length+' weeks have ice. '+
+   (d.teams.length%2?'An odd number of teams means one sits out every week. ':'')+
+   'Lengthen the season, cut the cap, or accept some double weeks.');
+  const taken={};
+  wk.forEach((w,wi)=>{
+   if(!left.length)return;
+   const avail=weeks[w];
+   const quota=Math.min(maxWeek,avail.length,Math.ceil(left.length/(wk.length-wi)));
+   const seen={}; let placed=0;
+   for(const s of avail){
+    if(placed>=quota||!left.length)break;
+    const k=left.findIndex(g=>!seen[g.homeId]&&!seen[g.awayId]);
+    if(k<0)break;
+    const g=left.splice(k,1)[0];
+    seen[g.homeId]=seen[g.awayId]=1;
+    g.date=s.date; g.day=s.day; g.time=s.time; g.rink=s.rink;
+    taken[s.date+'|'+s.time+'|'+(s.rink||'')]=1; placed++;
+   }
+  });
+  // whatever is left over gets squeezed in wherever there is still room
+  if(left.length){
+   const free=pool.filter(s=>!taken[s.date+'|'+s.time+'|'+(s.rink||'')]);
+   left.forEach((g,i)=>{const s=free[i]; if(!s)return;
+    g.date=s.date; g.day=s.day; g.time=s.time; g.rink=s.rink;
+    taken[s.date+'|'+s.time+'|'+(s.rink||'')]=1; doubles++;});
+  }
+ });
  games.forEach(g=>{
-  const d=dv.find(x=>x.id===g.divId), pool=bydiv[g.divId]||[];
-  const s=pool[Math.round((g.idx-1)*d.stride)];
-  g.date=s?s.date:null; g.day=s?s.day:null; g.time=s?s.time:null; g.rink=s?s.rink:null;
   g.id='g'+g.divId+'_'+g.idx;
   const c=[];
   if(!g.date)c.push('no ice available');
@@ -280,15 +317,19 @@ function build(){
  });
  games.sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:
   ((a.time||'')<(b.time||'')?-1:1));
+ // how often a team ends up with more than one game in a Monday-to-Sunday week
+ const wk={}; games.forEach(g=>{if(!g.date)return;const w=weekOf(g.date);
+  [g.homeId,g.awayId].forEach(t=>{const k=t+'|'+w; wk[k]=(wk[k]||0)+1})});
+ const multi=Object.values(wk).filter(v=>v>1).length;
  const cnt=S.teams.map(t=>played[t.id]);
  const pcnt=S.teams.filter(t=>tPcap(t)>0).map(t=>pdone[t.id]);
- return {games,practices,problems,slots,gameSlots,pracSlots,dv,bydiv,byprac,played,pdone,
+ return {games,practices,problems,slots,gameSlots,pracSlots,dv,bydiv,byprac,played,pdone,multi,doubles,
   pover:S.teams.filter(t=>pdone[t.id]>tPcap(t)).length,
   plo:pcnt.length?Math.min(...pcnt):0, phi:pcnt.length?Math.max(...pcnt):0,
   over:S.teams.filter(t=>{const d=dv.find(x=>x.id===t.div);return d&&played[t.id]>d.cap}).length,
   lo:cnt.length?Math.min(...cnt):0, hi:cnt.length?Math.max(...cnt):0};
 }
- 
+
 function standings(games){
  const out={};
  S.divisions.forEach(d=>{
@@ -327,7 +368,7 @@ function pwin(divId,n){
  const gm=b.find(x=>x.n===n); if(!gm)return null;
  return +s.h>+s.a?gm.home:+s.a>+s.h?gm.away:null;
 }
- 
+
 /* ---------------- storage & files ---------------- */
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));msg='Saved '+new Date().toLocaleTimeString()}
  catch(e){msg='Could not save locally'}}
@@ -339,14 +380,17 @@ function dl(name,text,type){
 function exportJSON(){dl((S.name||'league').replace(/\W+/g,'-')+'.json',JSON.stringify(S,null,1),'application/json')}
 function exportCSV(){
  const R=build();
+ const keepG=g=>(showWhat!=='practices')&&(!showTeam||g.homeId===showTeam||g.awayId===showTeam);
+ const keepP=p=>(showWhat!=='games')&&(!showTeam||p.teamId===showTeam);
  const rows=[['Date','Day','Time','Rink','Type','Division','Home','Away','Home score','Away score','Conflicts']];
- R.games.forEach(g=>{const s=S.scores[g.id]||{h:'',a:''};
+ R.games.filter(keepG).forEach(g=>{const s=S.scores[g.id]||{h:'',a:''};
   rows.push([g.date||'',g.day==null?'':DAYS[g.day],g.time||'',g.rink||'','Game',g.div,g.home,g.away,
    s.h??'',s.a??'',g.conflicts.join(' / ')])});
- R.practices.forEach(p=>rows.push([p.date||'',p.day==null?'':DAYS[p.day],p.time||'',p.rink||'',
+ R.practices.filter(keepP).forEach(p=>rows.push([p.date||'',p.day==null?'':DAYS[p.day],p.time||'',p.rink||'',
   'Practice',p.div,p.team,'','','',p.conflicts.join(' / ')]));
  rows.splice(1,rows.length-1,...rows.slice(1).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:(a[2]<b[2]?-1:1)));
- dl((S.name||'league').replace(/\W+/g,'-')+'-schedule.csv',
+ const who=S.teams.find(t=>t.id===showTeam);
+ dl(((S.name||'league')+(who?'-'+who.name:'')).replace(/\W+/g,'-')+'-schedule.csv',
   rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n'),'text/csv');
 }
 function importJSON(ev){
@@ -359,7 +403,7 @@ function importJSON(ev){
  r.readAsText(f);
 }
 function reset(){if(confirm('Reset everything to the starting setup?')){S=JSON.parse(JSON.stringify(DEFAULT));save();render()}}
- 
+
 /* ---------------- render ---------------- */
 function render(){
  const R=build(), st=standings(R.games);
@@ -382,7 +426,8 @@ function render(){
   '<br><span class="mid">'+(R.problems.length?esc(R.problems[0]):
     (conf?conf+' item(s) hit a blackout':'no conflicts'))+
   (R.phi?' &middot; practices '+(R.plo===R.phi?R.phi:R.plo+'-'+R.phi)+' per team':'')+
-  '</span></div></div>';
+  '<br><span class="mid">'+(R.multi?R.multi+' week(s) where a team plays more than once'
+    :'every team plays at most once a week')+'</span></div></div>';
  h+='<div class="tabs">'+[['setup','Setup'],['teams','Teams'],['ice','Ice'],['sched','Schedule'],
   ['stand','Standings'],['po','Playoffs'],['share','Share']]
   .map(([k,l])=>'<button class="tab'+(tab===k?' on':'')+'" onclick="tab=\''+k+'\';render()">'+l+'</button>').join('')+'</div>';
@@ -391,7 +436,7 @@ function render(){
  h+='<div class="note" style="text-align:center">'+esc(msg)+'</div>';
  document.getElementById('root').innerHTML=h;
 }
- 
+
 function setupTab(R){
  let h='<div class="card"><h2>League defaults</h2><p class="hint">Any division can override these.</p>'+
   '<div class="field"><label>League name</label><input value="'+esc(S.name)+'" onchange="set(\'name\',this.value)"></div>'+
@@ -447,7 +492,7 @@ function setupTab(R){
   :'<div class="good">Every division has enough ice for its schedule and its bracket.</div>';
  return h;
 }
- 
+
 function teamsTab(){
  let h='<div class="card"><h2>Teams</h2><p class="hint">Blackout day blocks that weekday for this team only.</p>';
  S.divisions.forEach(d=>{
@@ -483,7 +528,7 @@ function teamsTab(){
  h+='<button class="addbtn" onclick="badd()">+ Add blackout date</button></div>';
  return h;
 }
- 
+
 function iceTab(){
  const sl=allSlots(), gs=sl.filter(x=>x.use!=='practice').length, ps=sl.length-gs;
  let h='<div class="card"><h2>Weekly ice</h2><p class="hint">'+gs+' game slots and '+ps+
@@ -539,7 +584,7 @@ function iceTab(){
  h+='<button class="addbtn" onclick="xadd()">+ Add one-off slot</button></div>';
  return h;
 }
- 
+
 function schedTab(R){
  const rows=[];
  if(showWhat!=='practices')R.games.forEach(g=>rows.push({t:'Game',...g}));
@@ -548,18 +593,32 @@ function schedTab(R){
   R.practices.forEach(p=>{(grp[p.slotKey]=grp[p.slotKey]||[]).push(p)});
   Object.values(grp).forEach(g=>{const f=g[0];
    rows.push({t:'Practice',id:f.id,div:f.div,date:f.date,day:f.day,time:f.time,rink:f.rink,
-    home:g.map(x=>x.team).join(' / '),away:'',
+    home:g.map(x=>x.team).join(' / '),away:'',ids:g.map(x=>x.teamId),
     conflicts:[...new Set(g.flatMap(x=>x.conflicts||[]))]})});
  }
  rows.sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:
   ((a.time||'')<(b.time||'')?-1:1));
+ if(showTeam&&!S.teams.some(t=>t.id===showTeam))showTeam='';
+ const mine=r=>!showTeam||(r.t==='Game'?(r.homeId===showTeam||r.awayId===showTeam)
+                                       :(r.ids||[]).indexOf(showTeam)>=0);
+ const shown=rows.filter(mine);
+ const who=S.teams.find(t=>t.id===showTeam);
  let h='<div class="card"><h2>Schedule</h2><p class="hint">Enter scores as games are played. '+
   'Red lines need a manual move.</p><div class="btnrow" style="margin:0 0 10px">'+
   [['all','Everything'],['games','Games only'],['practices','Practices only']]
    .map(([k,l])=>'<button class="btn'+(showWhat===k?' dark':'')+'" onclick="showWhat=\''+k+'\';render()">'+l+'</button>').join('')+
-  '</div><div class="scroll"><table>'+
+  '</div><div class="field" style="max-width:280px"><label>Team</label>'+
+  '<select onchange="showTeam=this.value;render()"><option value="">All teams</option>'+
+  S.divisions.map(d=>'<optgroup label="'+esc(d.name)+'">'+
+   S.teams.filter(t=>t.div===d.id).map(t=>'<option value="'+t.id+'"'+(showTeam===t.id?' selected':'')+
+    '>'+esc(t.name)+'</option>').join('')+'</optgroup>').join('')+'</select></div>'+
+  (who?'<div class="good">'+esc(who.name)+': '+shown.filter(r=>r.t==='Game').length+' games, '+
+   shown.filter(r=>r.t==='Practice').length+' practices'+
+   (shown.some(r=>r.conflicts&&r.conflicts.length)?' &middot; some entries are flagged below':'')+
+   '</div>':'')+
+  '<div class="scroll"><table>'+
   '<tr><th>Date</th><th>Time</th><th>Rink</th><th>Type</th><th>Div</th><th>Home</th><th>Away</th><th></th><th></th></tr>';
- rows.forEach(g=>{const sc=S.scores[g.id]||{h:'',a:''};
+ shown.forEach(g=>{const sc=S.scores[g.id]||{h:'',a:''};
   h+='<tr><td class="mono">'+(g.date?fmt(g.date):'—')+'</td><td class="mono">'+(g.time?fmtT(g.time):'—')+
    '</td><td>'+esc(g.rink||'')+'</td><td><span class="pill'+(g.t==='Practice'?'':' in')+'">'+g.t+'</span></td>'+
    '<td>'+esc(g.div)+'</td><td>'+esc(g.home)+'</td><td>'+esc(g.away)+'</td>'+
@@ -570,11 +629,13 @@ function schedTab(R){
   if(g.conflicts&&g.conflicts.length)
    h+='<tr><td colspan="9" class="flag">&#9888; '+g.conflicts.map(esc).join(' &middot; ')+'</td></tr>';
  });
- h+='</table></div><div class="btnrow"><button class="btn" onclick="exportCSV()">Download CSV</button>'+
-  '<button class="btn" onclick="window.print()">Print</button></div></div>';
+ h+='</table></div><div class="btnrow"><button class="btn" onclick="exportCSV()">Download '+(showTeam||showWhat!=='all'?'this view':'CSV')+
+  '</button><button class="btn" onclick="window.print()">Print</button>'+
+  (showTeam?'<button class="btn" onclick="showTeam=\'\';render()">Clear team filter</button>':'')+
+  '</div></div>';
  return h;
 }
- 
+
 function standTab(st,R){
  let h='';
  S.divisions.forEach(d=>{
@@ -595,7 +656,7 @@ function standTab(st,R){
  });
  return h;
 }
- 
+
 function poTab(){
  let h='';
  S.divisions.forEach(d=>{
@@ -615,7 +676,7 @@ function poTab(){
  h+='<div class="note">Divisions never meet, so each crowns its own champion.</div>';
  return h;
 }
- 
+
 function shareTab(){
  return '<div class="card"><h2>Share and back up</h2>'+
   '<p class="hint">Your league is saved in this browser only. Nobody else sees your data, and clearing '+
@@ -633,7 +694,7 @@ function shareTab(){
   '<p class="note"><b>Other rinks.</b> Send them the link on its own. They start from the default setup '+
   'and build their own league. Nothing is shared between browsers.</p></div>';
 }
- 
+
 /* ---------------- mutations ---------------- */
 const set=(k,v)=>{S[k]=v;save();render()};
 const dset=(i,k,v)=>{S.divisions.find(d=>d.id===i)[k]=v;save();render()};
@@ -657,11 +718,7 @@ const bset=(i,k,v)=>{S.blackouts.find(b=>b.id===i)[k]=v;save();render()};
 const bdel=i=>{S.blackouts=S.blackouts.filter(b=>b.id!==i);save();render()};
 const scset=(g,k,v)=>{S.scores[g]=S.scores[g]||{h:'',a:''};S.scores[g][k]=v;save();render()};
 const poset=(g,k,v)=>{S.po[g]=S.po[g]||{h:'',a:''};S.po[g][k]=v;save();render()};
- 
+
 load(); render();
 </script>
 </body></html>
- 
-
-
-
