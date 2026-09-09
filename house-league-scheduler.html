@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>League Scheduler</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--frost:#E6EDF3;--panel:#fff;--ink:#0F2233;--steel:#5D7488;--hair:#C9D6E1;
+ --blue:#1B5FA8;--red:#C2352C;--board:#0C1A26;--amber:#FFB020;--green:#2E8B57}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Inter',system-ui,sans-serif;background:var(--frost);color:var(--ink);
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1100px;margin:0 auto;padding:16px 14px 80px}
+h1,h2,.disp{font-family:'Barlow Condensed','Arial Narrow',sans-serif;text-transform:uppercase;
+ letter-spacing:.03em;margin:0}
+h1{font-size:30px;font-weight:700;line-height:1}
+h2{font-size:17px;font-weight:700;margin-bottom:2px}
+.sub{font-size:12.5px;color:var(--steel);margin-top:6px;line-height:1.45}
+.card{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:14px;margin-top:12px}
+.hint{font-size:11.5px;color:var(--steel);margin:4px 0 10px;line-height:1.45}
+label{display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;
+ color:var(--steel);margin-bottom:4px}
+input,select{width:100%;font-family:inherit;font-size:15px;color:var(--ink);background:#F7FAFC;
+ border:1px solid var(--hair);border-radius:7px;padding:8px 9px;min-height:38px}
+input:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px;background:#fff}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.field{margin-bottom:9px}
+.tabs{display:flex;gap:5px;margin-top:12px;overflow-x:auto;padding-bottom:3px}
+.tab{flex:0 0 auto;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+ letter-spacing:.05em;font-size:15px;font-weight:700;padding:9px 14px;border-radius:8px;
+ border:1px solid var(--hair);background:var(--panel);color:var(--steel);cursor:pointer}
+.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.board{background:var(--board);border-radius:10px;padding:16px 14px 14px;margin-top:12px;border:1px solid #24384a}
+.brow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cell{text-align:center}
+.num{font-family:'Roboto Mono',monospace;font-weight:700;font-size:26px;color:var(--amber);
+ line-height:1;font-variant-numeric:tabular-nums}
+.cap{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.1em;
+ font-size:9.5px;color:#7E96AA;margin-top:6px}
+.verdict{margin-top:13px;padding-top:11px;border-top:1px solid #24384a;font-family:'Roboto Mono',monospace;
+ font-size:12px;font-weight:700;text-align:center;line-height:1.6}
+.ok{color:#3BC17E}.bad{color:#FF6B60}.mid{color:#7E96AA;font-weight:500}
+.row{border:1px solid var(--hair);border-radius:9px;padding:10px;margin-bottom:8px;background:#F7FAFC}
+.del{border:1px solid var(--hair);background:#fff;color:var(--red);border-radius:7px;width:38px;
+ height:38px;font-size:18px;line-height:1;cursor:pointer;flex:0 0 auto}
+.addbtn{width:100%;padding:11px;border-radius:8px;border:1px dashed var(--blue);background:#fff;
+ color:var(--blue);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;
+ letter-spacing:.06em;font-weight:700;font-size:14px;cursor:pointer;margin-top:2px}
+.btn{padding:10px 14px;border-radius:8px;border:1px solid var(--hair);background:#fff;color:var(--ink);
+ font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.05em;
+ font-weight:700;font-size:14px;cursor:pointer}
+.btn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{background:var(--ink);color:#fff;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;
+ padding:7px 5px;text-align:left;font-weight:600}
+td{padding:6px 5px;border-bottom:1px solid var(--hair)}
+tr:last-child td{border-bottom:none}
+.mono{font-family:'Roboto Mono',monospace;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.sc{width:46px;min-height:30px;padding:3px;font-size:14px;text-align:center}
+.flag{color:var(--red);font-size:11px}
+.pill{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+ padding:2px 6px;border-radius:20px;background:var(--hair);color:var(--ink);white-space:nowrap}
+.pill.in{background:var(--green);color:#fff}
+.dh{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.05em;font-size:16px;
+ font-weight:700;margin:16px 0 6px;padding-bottom:4px;border-bottom:2px solid var(--ink)}
+.note{font-size:11.5px;color:var(--steel);line-height:1.5;margin-top:9px}
+.warn{background:#FDECEA;border:1px solid #F0B4AE;border-radius:8px;padding:10px;font-size:12px;
+ color:#8A2018;margin-top:9px;line-height:1.5}
+.good{background:#E8F5EE;border:1px solid #A9D9BF;border-radius:8px;padding:10px;font-size:12px;
+ color:#1D6340;margin-top:9px;line-height:1.5}
+.champ{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-size:22px;font-weight:700;
+ color:var(--blue)}
+@media print{.tabs,.board,.btnrow,.addbtn,.del{display:none!important}.card{break-inside:avoid}}
+</style>
+</head>
+<body><div class="wrap" id="root"></div>
+<script>
+const DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const SH=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const KEY='league-scheduler-v2';
+let uid=1; const nid=()=>'x'+(uid++)+Math.random().toString(36).slice(2,6);
+
+const DEFAULT={
+ name:'Adult League 2026-27', start:'2026-09-13', end:'2027-03-21', cap:8, pcap:0, playoffTeams:4,
+ divisions:[{id:'d1',name:'Open',days:'',start:'',end:'',cap:'',pcap:''},
+            {id:'d2',name:'35+',days:'Tuesday, Thursday',start:'',end:'',cap:'',pcap:''}],
+ teams:[], lines:[], closures:[{id:'c1',from:'2026-11-26',to:'2026-11-29',note:'Thanksgiving'}],
+ blackouts:[], extras:[], scores:{}, po:{}
+};
+for(let i=1;i<=8;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d1',off:'',pcap:''});
+for(let i=9;i<=13;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d2',off:'',pcap:''});
+[[0,'21:30'],[0,'23:00'],[1,'23:00'],[2,'23:00'],[3,'23:00'],[4,'23:00']]
+ .forEach((x,i)=>DEFAULT.lines.push({id:'l'+i,day:x[0],time:x[1],mins:80,rink:'Rocky',use:'games',from:'',until:''}));
+
+let S=JSON.parse(JSON.stringify(DEFAULT)), tab='setup', msg='', showWhat='all';
+
+/* ---------------- dates ---------------- */
+const pd=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c)};
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const fmt=s=>{if(!s)return'';const d=pd(s);return (d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2)};
+const fmtT=t=>{if(!t)return'';let[h,m]=t.split(':').map(Number);const ap=h>=12?'pm':'am';
+ h=h%12===0?12:h%12;return h+':'+String(m).padStart(2,'0')+ap};
+const closed=s=>S.closures.some(c=>{const to=c.to&&c.to>=c.from?c.to:c.from;return c.from&&s>=c.from&&s<=to});
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dStart=d=>d.start&&d.start>S.start?d.start:S.start;
+const dEnd=d=>d.end&&d.end<S.end?d.end:S.end;
+const dCap=d=>Math.max(1,+(d.cap||S.cap)||1);
+const dPcap=d=>d.pcap===''||d.pcap==null?(+S.pcap||0):Math.max(0,+d.pcap||0);
+const tPcap=t=>{const d=S.divisions.find(x=>x.id===t.div);
+ if(t.pcap!==''&&t.pcap!=null)return Math.max(0,+t.pcap||0);
+ return d?dPcap(d):0;};
+const dayOK=(d,dayName)=>!d.days.trim()||d.days.toLowerCase().includes(dayName.toLowerCase());
+
+/* ---------------- ice expansion ---------------- */
+function allSlots(){
+ const out=[];
+ S.lines.forEach(l=>{
+  const st=l.from&&l.from>S.start?l.from:S.start;
+  const en=l.until&&l.until<S.end?l.until:S.end;
+  if(!st||!en||en<st)return;
+  const d=pd(st); d.setDate(d.getDate()+((l.day-d.getDay()+7)%7));
+  while(iso(d)<=en){const s=iso(d);
+   if(!closed(s))out.push({date:s,day:l.day,time:l.time,mins:l.mins,rink:l.rink,use:l.use||'games',lineId:l.id});
+   d.setDate(d.getDate()+7);}
+ });
+ S.extras.forEach(x=>{if(x.date&&!closed(x.date)&&x.date>=S.start&&x.date<=S.end)
+  out.push({date:x.date,day:pd(x.date).getDay(),time:x.time,mins:x.mins,rink:x.rink,use:x.use||'games',lineId:'extra'})});
+ out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:a.time>b.time?1:0));
+ return out;
+}
+
+/* ---------------- round robin (same index maths as the workbook) ---------------- */
+function candidates(teams,nRounds){
+ const n=teams.length, pad=n%2?n+1:n, pairs=pad/2, out=[];
+ for(let rd=1;rd<=nRounds;rd++){
+  for(let pp=1;pp<=pairs;pp++){
+   const idx=(pp-1+rd-1)%pairs;
+   const h=idx===0?1:((rd-1+idx)%(pad-1))+2;
+   const a=idx===0?((rd-1)%(pad-1))+2:(((rd-1-idx)%(pad-1)+(pad-1))%(pad-1))+2;
+   const flip=rd%2===0;
+   const hi=flip?a:h, ai=flip?h:a;
+   const H=hi>n?null:teams[hi-1], A=ai>n?null:teams[ai-1];
+   out.push([H,A]);
+  }
+ }
+ return out;
+}
+
+/* ---------------- the whole build ---------------- */
+function build(){
+ const problems=[],slots=allSlots();
+ const gameSlots=slots.filter(s=>s.use!=='practice');
+ const pracSlots=slots.filter(s=>s.use==='practice');
+ const dv=S.divisions.map(d=>{
+  const teams=S.teams.filter(t=>t.div===d.id);
+  const cap=dCap(d), pad=teams.length%2?teams.length+1:teams.length;
+  const perRound=teams.length<2?0:(teams.length%2?pad/2-1:pad/2);
+  const target=Math.floor(teams.length*cap/2);
+  const po=Math.max(0,S.playoffTeams-1);
+  const pneed=teams.reduce((n,t)=>n+tPcap(t),0);
+  return {...d,teams,cap,perRound,target,po,weight:target+po,pneed};
+ });
+ dv.forEach(d=>{if(d.teams.length<2)problems.push(d.name+' has fewer than 2 teams')});
+
+ // share each pool out among the divisions eligible that day, weighted by workload
+ function share(pool,wkey){
+  const rank={},by={}; dv.forEach(d=>by[d.id]=[]);
+  // a division limited to a couple of nights gets a bigger share of those nights,
+  // otherwise divisions with the run of the week crowd it out
+  const daysWith=[...new Set(pool.map(s=>DAYS[s.day]))];
+  const claim={};
+  dv.forEach(d=>{
+   const n=daysWith.filter(dn=>dayOK(d,dn)).length;
+   claim[d.id]=n?Math.max(1,Math.round(d[wkey]*daysWith.length/n)):0;
+  });
+  pool.forEach(s=>{
+   const dn=DAYS[s.day]; rank[dn]=(rank[dn]||0)+1;
+   const elig=dv.filter(d=>d[wkey]>0&&claim[d.id]>0&&dayOK(d,dn)&&s.date>=dStart(d)&&s.date<=dEnd(d));
+   const tot=elig.reduce((n,d)=>n+claim[d.id],0);
+   if(!tot)return;
+   const pick=((rank[dn]-1)*101)%tot+1;
+   let acc=0,chosen=elig[elig.length-1].id;
+   for(const d of elig){acc+=claim[d.id]; if(acc>=pick){chosen=d.id;break}}
+   s.div=chosen; by[chosen].push(s);
+  });
+  return by;
+ }
+ const bydiv=share(gameSlots,'weight');
+ const byprac=share(pracSlots,'pneed');
+
+ // pairings, capped so nobody passes their division's ceiling
+ const played={}; S.teams.forEach(t=>played[t.id]=0);
+ const games=[];
+ dv.forEach(d=>{
+  if(d.teams.length<2||d.perRound<=0)return;
+  let n=0;
+  const cand=candidates(d.teams,Math.min(60,Math.ceil(d.target/d.perRound)+12));
+  cand.forEach(([a,b])=>{
+   if(!a||!b||n>=d.target)return;
+   if(played[a.id]>=d.cap||played[b.id]>=d.cap)return;
+   played[a.id]++;played[b.id]++;n++;
+   games.push({divId:d.id,div:d.name,home:a.name,away:b.name,homeId:a.id,awayId:b.id,idx:n});
+  });
+  let guard=0;
+  while(n<d.target&&guard++<800){
+   const short=d.teams.filter(t=>played[t.id]<d.cap).sort((x,y)=>played[x.id]-played[y.id]);
+   if(short.length<2)break;
+   const[a,b]=short; played[a.id]++;played[b.id]++;n++;
+   games.push({divId:d.id,div:d.name,home:a.name,away:b.name,homeId:a.id,awayId:b.id,idx:n,topup:true});
+  }
+  d.scheduled=n; d.slots=bydiv[d.id].length;
+  d.stride=Math.max(1,d.slots/Math.max(1,d.weight));
+  d.short=Math.max(0,d.weight-d.slots);
+  if(d.short)problems.push(d.name+' is short '+d.short+' game slot'+(d.short>1?'s':''));
+ });
+
+ // practices: one team per slot, rotating through whoever still needs them
+ const practices=[]; const pdone={}; S.teams.forEach(t=>pdone[t.id]=0);
+ dv.forEach(d=>{
+  const pool=byprac[d.id]||[]; d.pslots=pool.length;
+  d.pshort=Math.max(0,d.pneed-d.pslots);
+  if(d.pshort)problems.push(d.name+' is short '+d.pshort+' practice slot'+(d.pshort>1?'s':''));
+  if(!d.pneed||!pool.length)return;
+  const order=[]; const want={}; d.teams.forEach(t=>want[t.id]=tPcap(t));
+  let guard=0;
+  while(order.length<d.pneed&&guard++<5000){
+   let placed=false;
+   d.teams.forEach(t=>{if(want[t.id]>0&&order.length<d.pneed){order.push(t);want[t.id]--;placed=true}});
+   if(!placed)break;
+  }
+  const stride=Math.max(1,pool.length/Math.max(1,d.pneed));
+  order.forEach((t,j)=>{
+   const s=pool[Math.round(j*stride)]; if(!s)return;
+   pdone[t.id]++;
+   practices.push({id:'pr'+d.id+'_'+j,divId:d.id,div:d.name,teamId:t.id,team:t.name,
+    date:s.date,day:s.day,time:s.time,rink:s.rink});
+  });
+ });
+ practices.forEach(p=>{
+  const c=[],t=S.teams.find(x=>x.id===p.teamId);
+  if(!p.date)c.push('no ice available');
+  else if(t){const dn=DAYS[p.day];
+   if(t.off&&t.off===dn)c.push(t.name+' is off '+dn+'s');
+   if(S.blackouts.some(b=>b.team===t.id&&b.date===p.date))c.push(t.name+' blacked out');}
+  p.conflicts=c;
+ });
+ practices.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
+
+ // spread each division's games across the ice it was given
+ games.forEach(g=>{
+  const d=dv.find(x=>x.id===g.divId), pool=bydiv[g.divId]||[];
+  const s=pool[Math.round((g.idx-1)*d.stride)];
+  g.date=s?s.date:null; g.day=s?s.day:null; g.time=s?s.time:null; g.rink=s?s.rink:null;
+  g.id='g'+g.divId+'_'+g.idx;
+  const c=[];
+  if(!g.date)c.push('no ice available');
+  else{const dn=DAYS[g.day];
+   [g.homeId,g.awayId].forEach(tid=>{const t=S.teams.find(x=>x.id===tid); if(!t)return;
+    if(t.off&&t.off===dn)c.push(t.name+' is off '+dn+'s');
+    if(S.blackouts.some(b=>b.team===tid&&b.date===g.date))c.push(t.name+' blacked out');});}
+  g.conflicts=c;
+ });
+ games.sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:
+  ((a.time||'')<(b.time||'')?-1:1));
+ const cnt=S.teams.map(t=>played[t.id]);
+ const pcnt=S.teams.filter(t=>tPcap(t)>0).map(t=>pdone[t.id]);
+ return {games,practices,problems,slots,gameSlots,pracSlots,dv,bydiv,byprac,played,pdone,
+  pover:S.teams.filter(t=>pdone[t.id]>tPcap(t)).length,
+  plo:pcnt.length?Math.min(...pcnt):0, phi:pcnt.length?Math.max(...pcnt):0,
+  over:S.teams.filter(t=>{const d=dv.find(x=>x.id===t.div);return d&&played[t.id]>d.cap}).length,
+  lo:cnt.length?Math.min(...cnt):0, hi:cnt.length?Math.max(...cnt):0};
+}
+
+function standings(games){
+ const out={};
+ S.divisions.forEach(d=>{
+  const rows=S.teams.filter(t=>t.div===d.id).map(t=>({id:t.id,name:t.name,gp:0,w:0,l:0,t:0,gf:0,ga:0}));
+  const by={}; rows.forEach(r=>by[r.id]=r);
+  games.filter(g=>g.divId===d.id).forEach(g=>{
+   const s=S.scores[g.id]; if(!s||s.h===''||s.a===''||s.h==null||s.a==null)return;
+   const h=+s.h,a=+s.a,H=by[g.homeId],A=by[g.awayId]; if(!H||!A)return;
+   H.gp++;A.gp++;H.gf+=h;H.ga+=a;A.gf+=a;A.ga+=h;
+   if(h>a){H.w++;A.l++}else if(a>h){A.w++;H.l++}else{H.t++;A.t++}
+  });
+  rows.forEach(r=>{r.pts=r.w*2+r.t;r.diff=r.gf-r.ga});
+  rows.sort((x,y)=>y.pts-x.pts||y.diff-x.diff||y.gf-x.gf);
+  rows.forEach((r,i)=>r.seed=i+1);
+  out[d.id]=rows;
+ });
+ return out;
+}
+function bracket(d,rows,pool,offset,stride){
+ const P=S.playoffTeams,g=[];
+ if(rows.length<P)return g;
+ for(let i=1;i<=P-1;i++){
+  const s=pool[Math.round((offset+i-1)*stride)];
+  let home,away;
+  if(i<=P/2){home=rows[i-1]?rows[i-1].name:'Seed '+i; away=rows[P-i]?rows[P-i].name:'Seed '+(P+1-i)}
+  else{const f1=2*(i-P/2)-1,f2=2*(i-P/2);
+   home=pwin(d.id,f1)||'Winner G'+f1; away=pwin(d.id,f2)||'Winner G'+f2}
+  const lab=i<=P/2?(P===2?'Final':P===4?'Semifinal':'Quarterfinal'):(i<=P/2+P/4?(P/4===1?'Final':'Semifinal'):'Final');
+  g.push({id:'p'+d.id+'_'+i,n:i,divId:d.id,label:lab,home,away,date:s?s.date:null,time:s?s.time:null});
+ }
+ return g;
+}
+function pwin(divId,n){
+ const s=S.po['p'+divId+'_'+n]; if(!s||s.h===''||s.a===''||s.h==null)return null;
+ const b=(window._po||{})[divId]; if(!b)return null;
+ const gm=b.find(x=>x.n===n); if(!gm)return null;
+ return +s.h>+s.a?gm.home:+s.a>+s.h?gm.away:null;
+}
+
+/* ---------------- storage & files ---------------- */
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));msg='Saved '+new Date().toLocaleTimeString()}
+ catch(e){msg='Could not save locally'}}
+function load(){try{const v=localStorage.getItem(KEY); if(v)S=JSON.parse(v)}catch(e){}}
+function dl(name,text,type){
+ const b=new Blob([text],{type:type||'text/plain'}),u=URL.createObjectURL(b),a=document.createElement('a');
+ a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);
+}
+function exportJSON(){dl((S.name||'league').replace(/\W+/g,'-')+'.json',JSON.stringify(S,null,1),'application/json')}
+function exportCSV(){
+ const R=build();
+ const rows=[['Date','Day','Time','Rink','Type','Division','Home','Away','Home score','Away score','Conflicts']];
+ R.games.forEach(g=>{const s=S.scores[g.id]||{h:'',a:''};
+  rows.push([g.date||'',g.day==null?'':DAYS[g.day],g.time||'',g.rink||'','Game',g.div,g.home,g.away,
+   s.h??'',s.a??'',g.conflicts.join(' / ')])});
+ R.practices.forEach(p=>rows.push([p.date||'',p.day==null?'':DAYS[p.day],p.time||'',p.rink||'',
+  'Practice',p.div,p.team,'','','',p.conflicts.join(' / ')]));
+ rows.splice(1,rows.length-1,...rows.slice(1).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:(a[2]<b[2]?-1:1)));
+ dl((S.name||'league').replace(/\W+/g,'-')+'-schedule.csv',
+  rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n'),'text/csv');
+}
+function importJSON(ev){
+ const f=ev.target.files[0]; if(!f)return;
+ const r=new FileReader();
+ r.onload=()=>{try{const o=JSON.parse(r.result);
+  if(!o.divisions||!o.teams)throw 0;
+  S=o;save();render();msg='Imported '+f.name;render();}
+  catch(e){alert('That file does not look like a league export.')}};
+ r.readAsText(f);
+}
+function reset(){if(confirm('Reset everything to the starting setup?')){S=JSON.parse(JSON.stringify(DEFAULT));save();render()}}
+
+/* ---------------- render ---------------- */
+function render(){
+ const R=build(), st=standings(R.games);
+ window._po={};
+ S.divisions.forEach(d0=>{
+  const d=R.dv.find(x=>x.id===d0.id);
+  window._po[d0.id]=bracket(d,st[d0.id]||[],R.bydiv[d0.id]||[],(d&&d.scheduled)||0,(d&&d.stride)||1);
+ });
+ const conf=R.games.filter(g=>g.conflicts.length).length+R.practices.filter(p=>p.conflicts.length).length;
+ let h='<h1>'+esc(S.name)+'</h1><p class="sub">Ice is one shared pool. Divisions decide who plays whom '+
+  'and which nights they may use. Blackouts apply to one team at a time.</p>';
+ h+='<div class="board"><div class="brow">'+
+  '<div class="cell"><div class="num">'+R.games.length+'</div><div class="cap">Games</div></div>'+
+  '<div class="cell"><div class="num">'+R.slots.length+'</div><div class="cap">Slots</div></div>'+
+  '<div class="cell"><div class="num">'+R.practices.length+'</div><div class="cap">Practices</div></div>'+
+  '<div class="cell"><div class="num">'+(R.lo===R.hi?R.hi:R.lo+'-'+R.hi)+'</div><div class="cap">Games / team</div></div>'+
+  '</div><div class="verdict">'+
+  (R.over||R.pover?'<span class="bad">'+(R.over+R.pover)+' TEAM(S) OVER A CAP</span>'
+    :'<span class="ok">NOBODY OVER A CAP</span>')+
+  '<br><span class="mid">'+(R.problems.length?esc(R.problems[0]):
+    (conf?conf+' item(s) hit a blackout':'no conflicts'))+
+  (R.phi?' &middot; practices '+(R.plo===R.phi?R.phi:R.plo+'-'+R.phi)+' per team':'')+
+  '</span></div></div>';
+ h+='<div class="tabs">'+[['setup','Setup'],['teams','Teams'],['ice','Ice'],['sched','Schedule'],
+  ['stand','Standings'],['po','Playoffs'],['share','Share']]
+  .map(([k,l])=>'<button class="tab'+(tab===k?' on':'')+'" onclick="tab=\''+k+'\';render()">'+l+'</button>').join('')+'</div>';
+ h+=({setup:()=>setupTab(R),teams:teamsTab,ice:iceTab,sched:()=>schedTab(R),
+      stand:()=>standTab(st,R),po:()=>poTab(),share:shareTab}[tab])();
+ h+='<div class="note" style="text-align:center">'+esc(msg)+'</div>';
+ document.getElementById('root').innerHTML=h;
+}
+
+function setupTab(R){
+ let h='<div class="card"><h2>League defaults</h2><p class="hint">Any division can override these.</p>'+
+  '<div class="field"><label>League name</label><input value="'+esc(S.name)+'" onchange="set(\'name\',this.value)"></div>'+
+  '<div class="g2"><div class="field"><label>Season start</label><input type="date" value="'+S.start+
+   '" onchange="set(\'start\',this.value)"></div>'+
+  '<div class="field"><label>Season end</label><input type="date" value="'+S.end+
+   '" onchange="set(\'end\',this.value)"></div></div>'+
+  '<div class="g2"><div class="field"><label>Game cap per team</label><input type="number" value="'+S.cap+
+   '" onchange="set(\'cap\',Math.max(1,+this.value||1))"></div>'+
+  '<div class="field"><label>Practices per team</label><input type="number" value="'+S.pcap+
+   '" onchange="set(\'pcap\',Math.max(0,+this.value||0))"></div></div>'+
+  '<div class="g2"><div class="field"><label>Playoff teams per division</label><select onchange="set(\'playoffTeams\',+this.value)">'+
+   [2,4,8].map(n=>'<option value="'+n+'"'+(S.playoffTeams===n?' selected':'')+'>'+n+'</option>').join('')+
+   '</select></div></div></div>';
+ h+='<div class="card"><h2>Divisions</h2><p class="hint">Days allowed takes a comma list, e.g. Tuesday, Thursday. '+
+  'Leave any override blank to use the league default.</p>';
+ S.divisions.forEach(d=>{
+  const dd=R.dv.find(x=>x.id===d.id)||{};
+  h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
+   '<div class="field" style="flex:1;margin:0"><label>Name</label><input value="'+esc(d.name)+
+    '" onchange="dset(\''+d.id+'\',\'name\',this.value)"></div>'+
+   '<button class="del" onclick="ddel(\''+d.id+'\')">&times;</button></div>'+
+   '<div class="field" style="margin:7px 0 0"><label>Days allowed</label><input placeholder="any day" value="'+
+    esc(d.days)+'" onchange="dset(\''+d.id+'\',\'days\',this.value)"></div>'+
+   '<div class="g3" style="margin-top:7px">'+
+   '<div class="field" style="margin:0"><label>Starts</label><input type="date" value="'+(d.start||'')+
+    '" onchange="dset(\''+d.id+'\',\'start\',this.value)"></div>'+
+   '<div class="field" style="margin:0"><label>Ends</label><input type="date" value="'+(d.end||'')+
+    '" onchange="dset(\''+d.id+'\',\'end\',this.value)"></div>'+
+   '<div class="field" style="margin:0"><label>Game cap</label><input type="number" placeholder="'+S.cap+'" value="'+
+    (d.cap||'')+'" onchange="dset(\''+d.id+'\',\'cap\',this.value)"></div></div>'+
+   '<div class="field" style="margin-top:7px"><label>Practices per team</label><input type="number" placeholder="'+
+    S.pcap+'" value="'+(d.pcap===''||d.pcap==null?'':d.pcap)+'" onchange="dset(\''+d.id+'\',\'pcap\',this.value)"></div>'+
+   '<div class="note">'+(dd.teams?dd.teams.length:0)+' teams &middot; '+(dd.target||0)+' games in '+
+    (dd.slots||0)+' slots'+(dd.short?' <b style="color:var(--red)">short '+dd.short+'</b>':'')+
+    (dd.pneed?' &middot; '+dd.pneed+' practices in '+(dd.pslots||0)+' slots'+
+      (dd.pshort?' <b style="color:var(--red)">short '+dd.pshort+'</b>':''):'')+'</div></div>';
+ });
+ h+='<button class="addbtn" onclick="dadd()">+ Add division</button></div>';
+ h+='<div class="card"><h2>Rink closures</h2><p class="hint">No games anywhere in these windows.</p>';
+ S.closures.forEach(c=>{
+  h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
+   '<div class="field" style="flex:1;margin:0"><label>From</label><input type="date" value="'+c.from+
+    '" onchange="cset(\''+c.id+'\',\'from\',this.value)"></div>'+
+   '<div class="field" style="flex:1;margin:0"><label>To</label><input type="date" value="'+(c.to||'')+
+    '" onchange="cset(\''+c.id+'\',\'to\',this.value)"></div>'+
+   '<button class="del" onclick="cdel(\''+c.id+'\')">&times;</button></div>'+
+   '<div class="field" style="margin:7px 0 0"><input placeholder="What is it?" value="'+esc(c.note||'')+
+    '" onchange="cset(\''+c.id+'\',\'note\',this.value)"></div></div>';
+ });
+ h+='<button class="addbtn" onclick="cadd()">+ Add closure</button></div>';
+ h+=R.problems.length?'<div class="warn"><b>Problems</b><br>'+R.problems.map(esc).join('<br>')+'</div>'
+  :'<div class="good">Every division has enough ice for its schedule and its bracket.</div>';
+ return h;
+}
+
+function teamsTab(){
+ let h='<div class="card"><h2>Teams</h2><p class="hint">Blackout day blocks that weekday for this team only.</p>';
+ S.divisions.forEach(d=>{
+  h+='<div class="dh">'+esc(d.name)+'</div>';
+  S.teams.filter(t=>t.div===d.id).forEach(t=>{
+   h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
+    '<div class="field" style="flex:1;margin:0"><label>Name</label><input value="'+esc(t.name)+
+     '" onchange="tset(\''+t.id+'\',\'name\',this.value)"></div>'+
+    '<button class="del" onclick="tdel(\''+t.id+'\')">&times;</button></div>'+
+    '<div class="g2" style="margin-top:7px">'+
+    '<div class="field" style="margin:0"><label>Division</label><select onchange="tset(\''+t.id+'\',\'div\',this.value)">'+
+     S.divisions.map(x=>'<option value="'+x.id+'"'+(t.div===x.id?' selected':'')+'>'+esc(x.name)+'</option>').join('')+
+     '</select></div>'+
+    '<div class="field" style="margin:0"><label>Blackout day</label><select onchange="tset(\''+t.id+'\',\'off\',this.value)">'+
+     '<option value="">none</option>'+DAYS.map(x=>'<option'+(t.off===x?' selected':'')+'>'+x+'</option>').join('')+
+     '</select></div></div>'+
+    '<div class="field" style="margin-top:7px"><label>Practices (blank = division default)</label>'+
+    '<input type="number" placeholder="'+tPcap(t)+'" value="'+(t.pcap===''||t.pcap==null?'':t.pcap)+
+    '" onchange="tset(\''+t.id+'\',\'pcap\',this.value)"></div></div>';
+  });
+  h+='<button class="addbtn" onclick="tadd(\''+d.id+'\')">+ Add team to '+esc(d.name)+'</button>';
+ });
+ h+='</div><div class="card"><h2>Blackout dates</h2><p class="hint">One row per team per date.</p>';
+ S.blackouts.forEach(b=>{
+  h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
+   '<div class="field" style="flex:1.3;margin:0"><label>Team</label><select onchange="bset(\''+b.id+'\',\'team\',this.value)">'+
+    S.teams.map(t=>'<option value="'+t.id+'"'+(b.team===t.id?' selected':'')+'>'+esc(t.name)+'</option>').join('')+
+    '</select></div>'+
+   '<div class="field" style="flex:1;margin:0"><label>Date</label><input type="date" value="'+(b.date||'')+
+    '" onchange="bset(\''+b.id+'\',\'date\',this.value)"></div>'+
+   '<button class="del" onclick="bdel(\''+b.id+'\')">&times;</button></div></div>';
+ });
+ h+='<button class="addbtn" onclick="badd()">+ Add blackout date</button></div>';
+ return h;
+}
+
+function iceTab(){
+ const sl=allSlots(), gs=sl.filter(x=>x.use!=='practice').length, ps=sl.length-gs;
+ let h='<div class="card"><h2>Weekly ice</h2><p class="hint">'+gs+' game slots and '+ps+
+  ' practice slots. The two pools are kept separate and each is shared out by workload.</p>';
+ S.lines.forEach(l=>{
+  const n=sl.filter(x=>x.lineId===l.id).length;
+  h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
+   '<div class="field" style="flex:1.2;margin:0"><label>Day</label><select onchange="lset(\''+l.id+'\',\'day\',+this.value)">'+
+    DAYS.map((d,i)=>'<option value="'+i+'"'+(l.day===i?' selected':'')+'>'+d+'</option>').join('')+'</select></div>'+
+   '<div class="field" style="flex:1;margin:0"><label>Start</label><input type="time" value="'+l.time+
+    '" onchange="lset(\''+l.id+'\',\'time\',this.value)"></div>'+
+   '<div class="field" style="flex:.6;margin:0"><label>Min</label><input type="number" step="5" value="'+l.mins+
+    '" onchange="lset(\''+l.id+'\',\'mins\',+this.value||60)"></div>'+
+   '<button class="del" onclick="ldel(\''+l.id+'\')">&times;</button></div>'+
+   '<div class="g3" style="margin-top:7px">'+
+   '<div class="field" style="margin:0"><label>Used for</label><select onchange="lset(\''+l.id+'\',\'use\',this.value)">'+
+    '<option value="games"'+((l.use||'games')==='games'?' selected':'')+'>Games</option>'+
+    '<option value="practice"'+(l.use==='practice'?' selected':'')+'>Practices</option></select></div>'+
+   '<div class="field" style="margin:0"><label>Rink</label><input value="'+esc(l.rink||'')+
+    '" onchange="lset(\''+l.id+'\',\'rink\',this.value)"></div>'+
+   '<div class="field" style="margin:0"><label>From</label><input type="date" value="'+(l.from||'')+
+    '" onchange="lset(\''+l.id+'\',\'from\',this.value)"></div>'+
+   '<div class="field" style="margin:0"><label>Until</label><input type="date" value="'+(l.until||'')+
+    '" onchange="lset(\''+l.id+'\',\'until\',this.value)"></div></div>'+
+   '<div class="note">'+SH[l.day]+' '+fmtT(l.time)+' &middot; '+((l.use||'games')==='practice'?'practice':'game')+
+    ' ice &rarr; '+n+' dates</div></div>';
+ });
+ h+='<button class="addbtn" onclick="ladd()">+ Add weekly line</button></div>';
+ h+='<div class="card"><h2>One-off extra ice</h2><p class="hint">Slots outside the weekly pattern.</p>';
+ S.extras.forEach(x=>{
+  h+='<div class="row"><div style="display:flex;gap:6px;align-items:end">'+
+   '<div class="field" style="flex:1;margin:0"><label>Date</label><input type="date" value="'+(x.date||'')+
+    '" onchange="xset(\''+x.id+'\',\'date\',this.value)"></div>'+
+   '<div class="field" style="flex:1;margin:0"><label>Start</label><input type="time" value="'+x.time+
+    '" onchange="xset(\''+x.id+'\',\'time\',this.value)"></div>'+
+   '<button class="del" onclick="xdel(\''+x.id+'\')">&times;</button></div></div>';
+ });
+ h+='<button class="addbtn" onclick="xadd()">+ Add one-off slot</button></div>';
+ return h;
+}
+
+function schedTab(R){
+ const rows=[];
+ if(showWhat!=='practices')R.games.forEach(g=>rows.push({t:'Game',...g}));
+ if(showWhat!=='games')R.practices.forEach(p=>rows.push({t:'Practice',...p,home:p.team,away:''}));
+ rows.sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:
+  ((a.time||'')<(b.time||'')?-1:1));
+ let h='<div class="card"><h2>Schedule</h2><p class="hint">Enter scores as games are played. '+
+  'Red lines need a manual move.</p><div class="btnrow" style="margin:0 0 10px">'+
+  [['all','Everything'],['games','Games only'],['practices','Practices only']]
+   .map(([k,l])=>'<button class="btn'+(showWhat===k?' dark':'')+'" onclick="showWhat=\''+k+'\';render()">'+l+'</button>').join('')+
+  '</div><div class="scroll"><table>'+
+  '<tr><th>Date</th><th>Time</th><th>Rink</th><th>Type</th><th>Div</th><th>Home</th><th>Away</th><th></th><th></th></tr>';
+ rows.forEach(g=>{const sc=S.scores[g.id]||{h:'',a:''};
+  h+='<tr><td class="mono">'+(g.date?fmt(g.date):'—')+'</td><td class="mono">'+(g.time?fmtT(g.time):'—')+
+   '</td><td>'+esc(g.rink||'')+'</td><td><span class="pill'+(g.t==='Practice'?'':' in')+'">'+g.t+'</span></td>'+
+   '<td>'+esc(g.div)+'</td><td>'+esc(g.home)+'</td><td>'+esc(g.away)+'</td>'+
+   (g.t==='Game'
+     ?'<td><input class="sc" inputmode="numeric" value="'+(sc.h??'')+'" onchange="scset(\''+g.id+'\',\'h\',this.value)"></td>'+
+      '<td><input class="sc" inputmode="numeric" value="'+(sc.a??'')+'" onchange="scset(\''+g.id+'\',\'a\',this.value)"></td>'
+     :'<td></td><td></td>')+'</tr>';
+  if(g.conflicts&&g.conflicts.length)
+   h+='<tr><td colspan="9" class="flag">&#9888; '+g.conflicts.map(esc).join(' &middot; ')+'</td></tr>';
+ });
+ h+='</table></div><div class="btnrow"><button class="btn" onclick="exportCSV()">Download CSV</button>'+
+  '<button class="btn" onclick="window.print()">Print</button></div></div>';
+ return h;
+}
+
+function standTab(st,R){
+ let h='';
+ S.divisions.forEach(d=>{
+  const rows=st[d.id]||[];
+  h+='<div class="card"><h2>'+esc(d.name)+'</h2><div class="scroll"><table>'+
+   '<tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>Diff</th>'+
+   '<th>Sched</th><th>Prac</th><th></th></tr>';
+  rows.forEach(r=>{const tm=S.teams.find(x=>x.id===r.id);
+   const gsch=R.games.filter(g=>g.homeId===r.id||g.awayId===r.id).length;
+   const pr=R.practices.filter(p=>p.teamId===r.id).length, want=tm?tPcap(tm):0;
+   h+='<tr><td class="mono">'+r.seed+'</td><td>'+esc(r.name)+'</td><td class="mono">'+r.gp+
+   '</td><td class="mono">'+r.w+'</td><td class="mono">'+r.l+'</td><td class="mono">'+r.t+
+   '</td><td class="mono"><b>'+r.pts+'</b></td><td class="mono">'+(r.diff>0?'+':'')+r.diff+
+   '</td><td class="mono">'+gsch+'</td><td class="mono'+(want&&pr<want?' flag':'')+'">'+pr+
+   (want?'/'+want:'')+'</td><td>'+
+   (r.seed<=S.playoffTeams?'<span class="pill in">in</span>':'')+'</td></tr>'});
+  h+='</table></div></div>';
+ });
+ return h;
+}
+
+function poTab(){
+ let h='';
+ S.divisions.forEach(d=>{
+  const b=window._po[d.id]||[];
+  h+='<div class="card"><h2>'+esc(d.name)+' bracket</h2>';
+  if(!b.length){h+='<p class="hint">Needs at least '+S.playoffTeams+' teams.</p></div>';return}
+  h+='<div class="scroll"><table><tr><th>Game</th><th>Round</th><th>Date</th><th>Home</th><th>Away</th><th></th><th></th></tr>';
+  b.forEach(g=>{const s=S.po[g.id]||{h:'',a:''};
+   h+='<tr><td class="mono">G'+g.n+'</td><td>'+g.label+'</td><td class="mono">'+
+    (g.date?fmt(g.date)+' '+fmtT(g.time):'—')+'</td><td>'+esc(g.home)+'</td><td>'+esc(g.away)+'</td>'+
+    '<td><input class="sc" inputmode="numeric" value="'+(s.h??'')+'" onchange="poset(\''+g.id+'\',\'h\',this.value)"></td>'+
+    '<td><input class="sc" inputmode="numeric" value="'+(s.a??'')+'" onchange="poset(\''+g.id+'\',\'a\',this.value)"></td></tr>';
+  });
+  h+='</table></div><p class="note">Champion</p><div class="champ">'+
+   (pwin(d.id,S.playoffTeams-1)?esc(pwin(d.id,S.playoffTeams-1)):'not decided yet')+'</div></div>';
+ });
+ h+='<div class="note">Divisions never meet, so each crowns its own champion.</div>';
+ return h;
+}
+
+function shareTab(){
+ return '<div class="card"><h2>Share and back up</h2>'+
+  '<p class="hint">Your league is saved in this browser only. Nobody else sees your data, and clearing '+
+  'browser storage will erase it. Use the buttons below to move a league between people or machines.</p>'+
+  '<div class="btnrow">'+
+  '<button class="btn dark" onclick="exportJSON()">Download league file</button>'+
+  '<button class="btn" onclick="document.getElementById(\'imp\').click()">Load league file</button>'+
+  '<button class="btn" onclick="exportCSV()">Download schedule CSV</button>'+
+  '<button class="btn" onclick="reset()">Reset</button></div>'+
+  '<input id="imp" type="file" accept=".json" style="display:none" onchange="importJSON(event)">'+
+  '<p class="note"><b>Working with coworkers.</b> Send them the link to this page plus your downloaded '+
+  'league file. They open the link, click Load league file, and see exactly what you see. When they make '+
+  'changes they download and send it back. There is no shared server, so only one person should hold the '+
+  'live copy at a time.</p>'+
+  '<p class="note"><b>Other rinks.</b> Send them the link on its own. They start from the default setup '+
+  'and build their own league. Nothing is shared between browsers.</p></div>';
+}
+
+/* ---------------- mutations ---------------- */
+const set=(k,v)=>{S[k]=v;save();render()};
+const dset=(i,k,v)=>{S.divisions.find(d=>d.id===i)[k]=v;save();render()};
+const dadd=()=>{S.divisions.push({id:nid(),name:'Division '+(S.divisions.length+1),days:'',start:'',end:'',cap:''});save();render()};
+const ddel=i=>{if(S.divisions.length<2)return;S.divisions=S.divisions.filter(d=>d.id!==i);
+ S.teams=S.teams.filter(t=>t.div!==i);save();render()};
+const tadd=d=>{S.teams.push({id:nid(),name:'New team',div:d,off:''});save();render()};
+const tset=(i,k,v)=>{S.teams.find(t=>t.id===i)[k]=v;save();render()};
+const tdel=i=>{S.teams=S.teams.filter(t=>t.id!==i);S.blackouts=S.blackouts.filter(b=>b.team!==i);save();render()};
+const ladd=()=>{S.lines.push({id:nid(),day:0,time:'21:00',mins:80,rink:'',use:'games',from:'',until:''});save();render()};
+const lset=(i,k,v)=>{S.lines.find(l=>l.id===i)[k]=v;save();render()};
+const ldel=i=>{S.lines=S.lines.filter(l=>l.id!==i);save();render()};
+const xadd=()=>{S.extras.push({id:nid(),date:S.start,time:'20:00',mins:80,rink:'',use:'games'});save();render()};
+const xset=(i,k,v)=>{S.extras.find(x=>x.id===i)[k]=v;save();render()};
+const xdel=i=>{S.extras=S.extras.filter(x=>x.id!==i);save();render()};
+const cadd=()=>{S.closures.push({id:nid(),from:S.start,to:'',note:''});save();render()};
+const cset=(i,k,v)=>{S.closures.find(c=>c.id===i)[k]=v;save();render()};
+const cdel=i=>{S.closures=S.closures.filter(c=>c.id!==i);save();render()};
+const badd=()=>{S.blackouts.push({id:nid(),team:S.teams[0]?S.teams[0].id:'',date:S.start});save();render()};
+const bset=(i,k,v)=>{S.blackouts.find(b=>b.id===i)[k]=v;save();render()};
+const bdel=i=>{S.blackouts=S.blackouts.filter(b=>b.id!==i);save();render()};
+const scset=(g,k,v)=>{S.scores[g]=S.scores[g]||{h:'',a:''};S.scores[g][k]=v;save();render()};
+const poset=(g,k,v)=>{S.po[g]=S.po[g]||{h:'',a:''};S.po[g][k]=v;save();render()};
+
+load(); render();
+</script>
+</body></html>
