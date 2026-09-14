@@ -72,6 +72,12 @@ tr:last-child td{border-bottom:none}
  color:#8A2018;margin-top:9px;line-height:1.5}
 .good{background:#E8F5EE;border:1px solid #A9D9BF;border-radius:8px;padding:10px;font-size:12px;
  color:#1D6340;margin-top:9px;line-height:1.5}
+.openrow td{background:#FFF8E6;color:#8A6A18}
+.pill.open{background:var(--amber);color:#3A2A00}
+.daybtns{display:flex;gap:4px;flex-wrap:wrap}
+.dayb{flex:1 1 auto;min-width:40px;padding:7px 4px;border-radius:6px;border:1px solid var(--hair);
+ background:#fff;color:var(--steel);font-size:11px;font-weight:600;cursor:pointer}
+.dayb.on{background:var(--blue);border-color:var(--blue);color:#fff}
 .champ{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;font-size:22px;font-weight:700;
  color:var(--blue)}
 @media print{.tabs,.board,.btnrow,.addbtn,.del{display:none!important}.card{break-inside:avoid}}
@@ -85,14 +91,15 @@ const KEY='league-scheduler-v2';
 let uid=1; const nid=()=>'x'+(uid++)+Math.random().toString(36).slice(2,6);
 
 const DEFAULT={
- name:'Adult League 2026-27', start:'2026-09-13', end:'2027-03-21', cap:8, pcap:0, playoffTeams:4,
+ name:'Adult League 2026-27', start:'2026-09-13', end:'2027-03-21', cap:8, pcap:0, playoffTeams:4, allowDouble:false,
+ venue:'Montclair State University Ice Arena', city:'Little Falls',
  divisions:[{id:'d1',name:'Open',days:'',start:'',end:'',cap:'',pcap:''},
             {id:'d2',name:'35+',days:'Tuesday, Thursday',start:'',end:'',cap:'',pcap:''}],
  teams:[], lines:[], closures:[{id:'c1',from:'2026-11-26',to:'2026-11-29',note:'Thanksgiving'}],
  blackouts:[], extras:[], scores:{}, po:{}
 };
-for(let i=1;i<=8;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d1',off:'',pcap:''});
-for(let i=9;i<=13;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d2',off:'',pcap:''});
+for(let i=1;i<=8;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d1',days:'',pcap:''});
+for(let i=9;i<=13;i++)DEFAULT.teams.push({id:'t'+i,name:'Team '+i,div:'d2',days:'',pcap:''});
 [[0,'21:30'],[0,'23:00'],[1,'23:00'],[2,'23:00'],[3,'23:00'],[4,'23:00']]
  .forEach((x,i)=>DEFAULT.lines.push({id:'l'+i,day:x[0],time:x[1],mins:80,rink:'Rocky',use:'games',from:'',until:''}));
 
@@ -114,7 +121,21 @@ const dPcap=d=>d.pcap===''||d.pcap==null?(+S.pcap||0):Math.max(0,+d.pcap||0);
 const tPcap=t=>{const d=S.divisions.find(x=>x.id===t.div);
  if(t.pcap!==''&&t.pcap!=null)return Math.max(0,+t.pcap||0);
  return d?dPcap(d):0;};
-const dayOK=(d,dayName)=>!d.days.trim()||d.days.toLowerCase().includes(dayName.toLowerCase());
+const dayOK=(d,dayName)=>!String(d.days||'').trim()||String(d.days).toLowerCase().includes(dayName.toLowerCase());
+const tDayOK=(t,dayName)=>!t||!String(t.days||'').trim()||
+ String(t.days).toLowerCase().includes(dayName.toLowerCase());
+const tFree=(t,date)=>!t||!S.blackouts.some(b=>b.team===t.id&&b.date===date);
+const canPlay=(id,date,dayName)=>{const t=S.teams.find(x=>x.id===id);
+ return tDayOK(t,dayName)&&tFree(t,date)};
+const tDays=t=>String(t.days||'').trim()?String(t.days).split(',').map(x=>x.trim()).filter(Boolean):DAYS.slice();
+function tToggle(id,day){
+ const t=S.teams.find(x=>x.id===id); if(!t)return;
+ let cur=tDays(t);
+ cur=cur.indexOf(day)>=0?cur.filter(d=>d!==day):cur.concat([day]);
+ cur=DAYS.filter(d=>cur.indexOf(d)>=0);
+ t.days=cur.length===7?'':cur.join(', ');
+ save();render();
+}
 
 /* ---------------- ice expansion ---------------- */
 function allSlots(){
@@ -167,23 +188,20 @@ function build(){
  });
  dv.forEach(d=>{if(d.teams.length<2)problems.push(d.name+' has fewer than 2 teams')});
 
- // share each pool out among the divisions eligible that day, weighted by workload
  function share(pool,wkey){
-  const rank={},by={}; dv.forEach(d=>by[d.id]=[]);
-  // a division limited to a couple of nights gets a bigger share of those nights,
-  // otherwise divisions with the run of the week crowd it out
+  const by={}; dv.forEach(d=>by[d.id]=[]);
   const daysWith=[...new Set(pool.map(s=>DAYS[s.day]))];
   const claim={};
   dv.forEach(d=>{
    const n=daysWith.filter(dn=>dayOK(d,dn)).length;
    claim[d.id]=n?Math.max(1,Math.round(d[wkey]*daysWith.length/n)):0;
   });
-  // walk the ice in date order and hand each slot to whichever eligible division
-  // is furthest behind its fair share. Keeps divisions level week by week.
   const got={}; dv.forEach(d=>got[d.id]=0);
   pool.forEach(s=>{
    const dn=DAYS[s.day];
-   const elig=dv.filter(d=>d[wkey]>0&&claim[d.id]>0&&dayOK(d,dn)&&s.date>=dStart(d)&&s.date<=dEnd(d));
+   const need=wkey==='pneed'?1:2;
+   const elig=dv.filter(d=>d[wkey]>0&&claim[d.id]>0&&dayOK(d,dn)&&
+    s.date>=dStart(d)&&s.date<=dEnd(d)&&d.teams.filter(t=>tDayOK(t,dn)).length>=need);
    if(!elig.length)return;
    let chosen=elig[0],best=Infinity;
    elig.forEach(d=>{const sc=(got[d.id]+1)/claim[d.id];
@@ -192,7 +210,20 @@ function build(){
   });
   return by;
  }
- const bydiv=share(gameSlots,'weight');
+ // spread the unpopular ice times around
+ const bucket=s=>{const h=+String(s.time||'12:00').slice(0,2);
+  return h<10?'early':(h>=20?'late':'mid')};
+ // share each time-of-day band out separately, so no division is handed
+ // a disproportionate pile of 7am ice
+ const bands={early:[],mid:[],late:[]};
+ gameSlots.forEach(s=>bands[bucket(s)].push(s));
+ const bydiv={}; dv.forEach(d=>bydiv[d.id]=[]);
+ ['early','late','mid'].forEach(b=>{
+  const part=share(bands[b],'weight');
+  dv.forEach(d=>{bydiv[d.id]=bydiv[d.id].concat(part[d.id]||[])});
+ });
+ dv.forEach(d=>bydiv[d.id].sort((a,b2)=>a.date<b2.date?-1:a.date>b2.date?1:
+  (a.time<b2.time?-1:a.time>b2.time?1:0)));
 
  // pairings, capped so nobody passes their division's ceiling
  const played={}; S.teams.forEach(t=>played[t.id]=0);
@@ -215,22 +246,116 @@ function build(){
    games.push({divId:d.id,div:d.name,home:a.name,away:b.name,homeId:a.id,awayId:b.id,idx:n,topup:true});
   }
   d.scheduled=n; d.slots=bydiv[d.id].length;
-  d.stride=Math.max(1,d.slots/Math.max(1,d.weight));
   d.short=Math.max(0,d.weight-d.slots);
   if(d.short)problems.push(d.name+' is short '+d.short+' game slot'+(d.short>1?'s':''));
  });
 
- // practices
+ // hold back the end of the season so every bracket has ice after the last game
+ const poTotal=dv.reduce((n,d)=>n+(d.teams.length>=S.playoffTeams?d.po:0),0);
+ const roundsNeeded=Math.max(1,Math.round(Math.log(S.playoffTeams)/Math.log(2)));
+ const allWeeks=[...new Set(gameSlots.map(s=>weekOf(s.date)))].sort();
+ const reserved=new Set();
+ if(poTotal>0){
+  let acc=0,take=0;
+  while(take<allWeeks.length-1&&(take<roundsNeeded||acc<poTotal)){
+   take++; const w=allWeeks[allWeeks.length-take];
+   reserved.add(w); acc+=gameSlots.filter(s=>weekOf(s.date)===w).length;
+  }
+ }
+
+ const tb={}; S.teams.forEach(t=>tb[t.id]={early:0,mid:0,late:0});
+
+ const gDate={}, gWeek={};      // where each team already has a game
+ const mark=(g,s)=>{
+  g.date=s.date; g.day=s.day; g.time=s.time; g.rink=s.rink;
+  const b=bucket(s);
+  [g.homeId,g.awayId].forEach(t=>{
+   (gDate[t]=gDate[t]||{})[s.date]=1;
+   (gWeek[t]=gWeek[t]||{})[weekOf(s.date)]=1;
+   if(tb[t])tb[t][b]++;
+  });
+ };
+
+ // place games week by week, one per team per week, balancing slot times
+ let doubles=0;
+ dv.forEach(d=>{
+  const pool=bydiv[d.id]||[]; if(!pool.length)return;
+  let left=games.filter(g=>g.divId===d.id);
+  const weeks={}; pool.forEach(s=>{const w=weekOf(s.date);
+   if(!reserved.has(w))(weeks[w]=weeks[w]||[]).push(s)});
+  const wk=Object.keys(weeks).sort();
+  const maxWeek=Math.max(1,Math.floor(d.teams.length/2));
+  const need=Math.ceil(left.length/maxWeek);
+  if(need>wk.length)problems.push(d.name+' needs '+need+' weeks to give every team '+d.cap+
+   ' games one per week, but only '+wk.length+' weeks have ice. '+
+   (d.teams.length%2?'An odd number of teams means one sits out every week. ':'')+
+   'Lengthen the season, cut the cap, or accept some double weeks.');
+  const taken={};
+  wk.forEach((w,wi)=>{
+   if(!left.length)return;
+   // fill the unpopular ice first, while every game is still a candidate
+   const rank={early:0,late:1,mid:2};
+   const avail=weeks[w].slice().sort((a,b)=>rank[bucket(a)]-rank[bucket(b)]);
+   const quota=Math.min(maxWeek,avail.length,Math.ceil(left.length/(wk.length-wi)));
+   const seen={}; let placed=0;
+   for(const s of avail){
+    if(placed>=quota||!left.length)break;
+    const dn=DAYS[s.day], b=bucket(s);
+    let pick=-1,bestLoad=Infinity;
+    left.forEach((g,i)=>{
+     if(seen[g.homeId]||seen[g.awayId])return;
+     if(!canPlay(g.homeId,s.date,dn)||!canPlay(g.awayId,s.date,dn))return;
+     if(!S.allowDouble&&((gDate[g.homeId]||{})[s.date]||(gDate[g.awayId]||{})[s.date]))return;
+     const h=tb[g.homeId]?tb[g.homeId][b]:0, a2=tb[g.awayId]?tb[g.awayId][b]:0;
+     const load=Math.max(h,a2)*10+h+a2;      // whoever is worst off goes first
+     if(load<bestLoad){bestLoad=load;pick=i}
+    });
+    if(pick<0)continue;
+    const g=left.splice(pick,1)[0];
+    seen[g.homeId]=seen[g.awayId]=1;
+    mark(g,s); taken[s.date+'|'+s.time+'|'+(s.rink||'')]=1; placed++;
+   }
+  });
+  // leftovers double up, on a different day wherever possible
+  if(left.length){
+   const dnum=x=>Math.round(pd(x).getTime()/86400000);
+   const free=pool.filter(s=>!taken[s.date+'|'+s.time+'|'+(s.rink||'')]&&!reserved.has(weekOf(s.date)));
+   left.slice().forEach(g=>{
+    let best=-1,bestTier=9,bestGap=-1;
+    free.forEach((s,i)=>{
+     if(!s)return;
+     const dnm=DAYS[s.day];
+     if(!canPlay(g.homeId,s.date,dnm)||!canPlay(g.awayId,s.date,dnm))return;
+     const hs=gDate[g.homeId]||{}, as=gDate[g.awayId]||{};
+     const same=hs[s.date]||as[s.date];
+     if(same&&!S.allowDouble)return;
+     let gap=99;
+     Object.keys(hs).concat(Object.keys(as)).forEach(dt=>{
+      gap=Math.min(gap,Math.abs(dnum(s.date)-dnum(dt)))});
+     const tier=same?3:(gap>=2?1:2);
+     if(tier<bestTier||(tier===bestTier&&gap>bestGap)){bestTier=tier;bestGap=gap;best=i}
+    });
+    if(best<0)return;
+    const s=free[best]; free[best]=null;
+    mark(g,s); taken[s.date+'|'+s.time+'|'+(s.rink||'')]=1;
+    left.splice(left.indexOf(g),1); doubles++;
+   });
+  }
+  d.taken=taken; d.leftover=left;
+ });
+
+ // practices: never on a day that team already has a game, one a week where possible
  const practices=[]; const pdone={}; S.teams.forEach(t=>pdone[t.id]=0);
  const owned={}; dv.forEach(d=>owned[d.id]=[]); const sharedPrac=[];
  pracSlots.forEach(s=>{
   const line=S.lines.find(l=>l.id===s.lineId)||{};
   s.cap=Math.max(1,Math.min(4,+(line.slotTeams||1)));
   s.only=String(line.only||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
-  const pd=line.pdiv||'';
-  if(pd&&dv.some(d=>d.id===pd)){s.div=pd;owned[pd].push(s)} else sharedPrac.push(s);
+  const pd2=line.pdiv||'';
+  if(pd2&&dv.some(d=>d.id===pd2)){s.div=pd2;owned[pd2].push(s)} else sharedPrac.push(s);
  });
  const byprac=share(sharedPrac,'pneed');
+ const pTaken={}, pWeek={}, pDate={};
  dv.forEach(d=>{
   const pool=(owned[d.id]||[]).concat(byprac[d.id]||[])
    .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
@@ -242,88 +367,106 @@ function build(){
   let remaining=d.pneed;
   pool.forEach((s,i)=>{
    if(remaining<=0)return;
+   const w=weekOf(s.date);
    const place=Math.min(s.cap,Math.max(1,Math.ceil(remaining/(pool.length-i))));
-   const on=[];
+   const on=[]; let used=0;
    for(let k=0;k<place;k++){
-    const cands=d.teams.filter(t=>want[t.id]>0&&on.indexOf(t.id)<0&&
-     (!s.only.length||s.only.indexOf(t.name.toLowerCase())>=0));
+    const ok=t=>want[t.id]>0&&on.indexOf(t.id)<0&&tDayOK(t,DAYS[s.day])&&tFree(t,s.date)&&
+     !(gDate[t.id]||{})[s.date]&&(!s.only.length||s.only.indexOf(t.name.toLowerCase())>=0);
+    let cands=d.teams.filter(t=>ok(t)&&!(pWeek[t.id]||{})[w]);
+    if(!cands.length)cands=d.teams.filter(ok);
     if(!cands.length)break;
     cands.sort((x,y)=>(want[y.id]-want[x.id])||(pdone[x.id]-pdone[y.id]));
     const t=cands[0];
-    want[t.id]--; remaining--; on.push(t.id); pdone[t.id]++;
+    want[t.id]--; remaining--; on.push(t.id); pdone[t.id]++; used++;
+    (pWeek[t.id]=pWeek[t.id]||{})[w]=1;
+    (pDate[t.id]=pDate[t.id]||{})[s.date]=1;
     practices.push({id:'pr'+d.id+'_'+i+'_'+k,divId:d.id,div:d.name,teamId:t.id,team:t.name,
      slotKey:s.date+'|'+s.time+'|'+(s.rink||''),
      date:s.date,day:s.day,time:s.time,rink:s.rink});
    }
+   if(used)pTaken[s.date+'|'+s.time+'|'+(s.rink||'')]=1;
   });
  });
+
+ // anything still unplaced tries every spare slot in the league, not just its own
+ // division's share. Game ice first, then practice ice as a genuine last resort.
+ let onPractice=0;
+ const gTaken={}; games.forEach(g=>{if(g.date)gTaken[g.date+'|'+g.time+'|'+(g.rink||'')]=1});
+ function rescue(pool,isPractice){
+  dv.forEach(d=>{
+   const left=d.leftover||[]; if(!left.length)return;
+   const spare=pool.filter(s=>!gTaken[s.date+'|'+s.time+'|'+(s.rink||'')]&&
+    !(isPractice&&pTaken[s.date+'|'+s.time+'|'+(s.rink||'')])&&
+    !reserved.has(weekOf(s.date))&&s.date>=dStart(d)&&s.date<=dEnd(d)&&dayOK(d,DAYS[s.day]))
+    .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
+   left.slice().forEach(g=>{
+    const i=spare.findIndex(s=>s&&canPlay(g.homeId,s.date,DAYS[s.day])&&canPlay(g.awayId,s.date,DAYS[s.day])&&
+     !(pDate[g.homeId]||{})[s.date]&&!(pDate[g.awayId]||{})[s.date]&&
+     (S.allowDouble||(!(gDate[g.homeId]||{})[s.date]&&!(gDate[g.awayId]||{})[s.date])));
+    if(i<0)return;
+    const s=spare[i]; spare[i]=null;
+    mark(g,s); gTaken[s.date+'|'+s.time+'|'+(s.rink||'')]=1;
+    if(isPractice){g.onPractice=1; onPractice++; pTaken[s.date+'|'+s.time+'|'+(s.rink||'')]=1}
+    left.splice(left.indexOf(g),1);
+   });
+  });
+ }
+ rescue(gameSlots,false);
+ rescue(pracSlots,true);
+ dv.forEach(d=>{(d.leftover||[]).forEach(g=>g.unplaced=1)});
+
+ // playoffs only after the whole regular season
+ const seasonEndsOn=games.filter(g=>g.date).map(g=>g.date).sort().pop()||'';
+ dv.forEach(d=>{
+  const pool=bydiv[d.id]||[], taken=d.taken||{};
+  d.lastGame=games.filter(g=>g.divId===d.id&&g.date).map(g=>g.date).sort().pop()||'';
+  d.free=pool.filter(s=>!taken[s.date+'|'+s.time+'|'+(s.rink||'')]&&s.date>seasonEndsOn)
+   .sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
+ });
+
  practices.forEach(p=>{
   const c=[],t=S.teams.find(x=>x.id===p.teamId);
   if(!p.date)c.push('no ice available');
   else if(t){const dn=DAYS[p.day];
-   if(t.off&&t.off===dn)c.push(t.name+' is off '+dn+'s');
-   if(S.blackouts.some(b=>b.team===t.id&&b.date===p.date))c.push(t.name+' blacked out');}
+   if(!tDayOK(t,dn))c.push(t.name+' does not play '+dn+'s');
+   if(S.blackouts.some(b=>b.team===t.id&&b.date===p.date))c.push(t.name+' blacked out');
+   if((gDate[t.id]||{})[p.date])c.push(t.name+' also has a game that day');}
   p.conflicts=c;
  });
  practices.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.time<b.time?-1:1));
 
- // place games week by week: a division never takes more slots in a week than its
- // teams can fill without someone playing twice
- let doubles=0;
- dv.forEach(d=>{
-  const pool=bydiv[d.id]||[]; if(!pool.length)return;
-  let left=games.filter(g=>g.divId===d.id);
-  const weeks={}; pool.forEach(s=>{const w=weekOf(s.date);(weeks[w]=weeks[w]||[]).push(s)});
-  const wk=Object.keys(weeks).sort();
-  const maxWeek=Math.max(1,Math.floor(d.teams.length/2));
-  const need=Math.ceil(left.length/maxWeek);
-  if(need>wk.length)problems.push(d.name+' needs '+need+' weeks to give every team '+d.cap+
-   ' games one per week, but only '+wk.length+' weeks have ice. '+
-   (d.teams.length%2?'An odd number of teams means one sits out every week. ':'')+
-   'Lengthen the season, cut the cap, or accept some double weeks.');
-  const taken={};
-  wk.forEach((w,wi)=>{
-   if(!left.length)return;
-   const avail=weeks[w];
-   const quota=Math.min(maxWeek,avail.length,Math.ceil(left.length/(wk.length-wi)));
-   const seen={}; let placed=0;
-   for(const s of avail){
-    if(placed>=quota||!left.length)break;
-    const k=left.findIndex(g=>!seen[g.homeId]&&!seen[g.awayId]);
-    if(k<0)break;
-    const g=left.splice(k,1)[0];
-    seen[g.homeId]=seen[g.awayId]=1;
-    g.date=s.date; g.day=s.day; g.time=s.time; g.rink=s.rink;
-    taken[s.date+'|'+s.time+'|'+(s.rink||'')]=1; placed++;
-   }
-  });
-  // whatever is left over gets squeezed in wherever there is still room
-  if(left.length){
-   const free=pool.filter(s=>!taken[s.date+'|'+s.time+'|'+(s.rink||'')]);
-   left.forEach((g,i)=>{const s=free[i]; if(!s)return;
-    g.date=s.date; g.day=s.day; g.time=s.time; g.rink=s.rink;
-    taken[s.date+'|'+s.time+'|'+(s.rink||'')]=1; doubles++;});
-  }
- });
  games.forEach(g=>{
   g.id='g'+g.divId+'_'+g.idx;
   const c=[];
-  if(!g.date)c.push('no ice available');
+  if(!g.date)c.push(g.unplaced?'no legal slot left':'no ice available');
   else{const dn=DAYS[g.day];
    [g.homeId,g.awayId].forEach(tid=>{const t=S.teams.find(x=>x.id===tid); if(!t)return;
-    if(t.off&&t.off===dn)c.push(t.name+' is off '+dn+'s');
-    if(S.blackouts.some(b=>b.team===tid&&b.date===g.date))c.push(t.name+' blacked out');});}
+    if(!tDayOK(t,dn))c.push(t.name+' does not play '+dn+'s');
+    if(S.blackouts.some(b=>b.team===tid&&b.date===g.date))c.push(t.name+' blacked out');
+    if((pDate[tid]||{})[g.date])c.push(t.name+' also practises that day');});}
   g.conflicts=c;
  });
  games.sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:
   ((a.time||'')<(b.time||'')?-1:1));
- // how often a team ends up with more than one game in a Monday-to-Sunday week
- const wk={}; games.forEach(g=>{if(!g.date)return;const w=weekOf(g.date);
-  [g.homeId,g.awayId].forEach(t=>{const k=t+'|'+w; wk[k]=(wk[k]||0)+1})});
- const multi=Object.values(wk).filter(v=>v>1).length;
+
+ const wkc={}; games.forEach(g=>{if(!g.date)return;const w=weekOf(g.date);
+  [g.homeId,g.awayId].forEach(t=>{const k=t+'|'+w; wkc[k]=(wkc[k]||0)+1})});
+ const multi=Object.values(wkc).filter(v=>v>1).length;
+ const dd={}; games.forEach(g=>{if(!g.date)return;
+  [g.homeId,g.awayId].forEach(t=>{const k=t+'|'+g.date; dd[k]=(dd[k]||0)+1})});
+ const sameDay=Object.values(dd).filter(v=>v>1).length;
+ const clash=games.filter(g=>g.date&&((pDate[g.homeId]||{})[g.date]||(pDate[g.awayId]||{})[g.date])).length;
+ const usedKey={};
+ games.forEach(g=>{if(g.date)usedKey[g.date+'|'+g.time+'|'+(g.rink||'')]=1});
+ practices.forEach(p=>{if(p.date)usedKey[p.date+'|'+p.time+'|'+(p.rink||'')]=1});
+ Object.values(window._poSlots||{}).forEach(k=>usedKey[k]=1);
+ const open=slots.filter(s=>!usedKey[s.date+'|'+s.time+'|'+(s.rink||'')])
+  .map(s=>({...s,divName:(dv.find(d=>d.id===s.div)||{}).name||''}));
  const cnt=S.teams.map(t=>played[t.id]);
  const pcnt=S.teams.filter(t=>tPcap(t)>0).map(t=>pdone[t.id]);
- return {games,practices,problems,slots,gameSlots,pracSlots,dv,bydiv,byprac,played,pdone,multi,doubles,
+ return {games,practices,open,problems,slots,gameSlots,pracSlots,dv,bydiv,byprac,played,pdone,
+  multi,sameDay,doubles,onPractice,clash,tb,
   pover:S.teams.filter(t=>pdone[t.id]>tPcap(t)).length,
   plo:pcnt.length?Math.min(...pcnt):0, phi:pcnt.length?Math.max(...pcnt):0,
   over:S.teams.filter(t=>{const d=dv.find(x=>x.id===t.div);return d&&played[t.id]>d.cap}).length,
@@ -348,17 +491,24 @@ function standings(games){
  });
  return out;
 }
-function bracket(d,rows,pool,offset,stride){
+function bracket(d,rows,pool){
  const P=S.playoffTeams,g=[];
  if(rows.length<P)return g;
+ let at=0,roundEnd='',roundNo=0;
  for(let i=1;i<=P-1;i++){
-  const s=pool[Math.round((offset+i-1)*stride)];
+  const rn=i<=P/2?1:(i<=P/2+P/4?2:3);
+  if(rn!==roundNo){                       // a round cannot start until the last one ends
+   roundNo=rn;
+   while(at<pool.length&&roundEnd&&pool[at].date<=roundEnd)at++;
+  }
+  const s=pool[at]; if(s){at++; if(!roundEnd||s.date>roundEnd)roundEnd=s.date}
   let home,away;
   if(i<=P/2){home=rows[i-1]?rows[i-1].name:'Seed '+i; away=rows[P-i]?rows[P-i].name:'Seed '+(P+1-i)}
   else{const f1=2*(i-P/2)-1,f2=2*(i-P/2);
    home=pwin(d.id,f1)||'Winner G'+f1; away=pwin(d.id,f2)||'Winner G'+f2}
   const lab=i<=P/2?(P===2?'Final':P===4?'Semifinal':'Quarterfinal'):(i<=P/2+P/4?(P/4===1?'Final':'Semifinal'):'Final');
-  g.push({id:'p'+d.id+'_'+i,n:i,divId:d.id,label:lab,home,away,date:s?s.date:null,time:s?s.time:null});
+  g.push({id:'p'+d.id+'_'+i,n:i,divId:d.id,label:lab,home,away,
+   date:s?s.date:null,time:s?s.time:null,rink:s?s.rink:null});
  }
  return g;
 }
@@ -372,12 +522,48 @@ function pwin(divId,n){
 /* ---------------- storage & files ---------------- */
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));msg='Saved '+new Date().toLocaleTimeString()}
  catch(e){msg='Could not save locally'}}
-function load(){try{const v=localStorage.getItem(KEY); if(v)S=JSON.parse(v)}catch(e){}}
+function load(){
+ try{const v=localStorage.getItem(KEY); if(v)S=JSON.parse(v)}catch(e){}
+ (S.teams||[]).forEach(t=>{                      // old single blackout day -> allowed list
+  if(t.off&&t.days==null)t.days=DAYS.filter(d=>d!==t.off).join(', ');
+  if(t.days==null)t.days='';
+  delete t.off;
+ });
+}
 function dl(name,text,type){
  const b=new Blob([text],{type:type||'text/plain'}),u=URL.createObjectURL(b),a=document.createElement('a');
  a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);
 }
 function exportJSON(){dl((S.name||'league').replace(/\W+/g,'-')+'.json',JSON.stringify(S,null,1),'application/json')}
+function snDate(d){const x=pd(d);return (x.getMonth()+1)+'/'+x.getDate()+'/'+x.getFullYear()}
+function snTime(t){if(!t)return '';let[h,m]=String(t).split(':').map(Number);
+ const ap=h>=12?'PM':'AM'; h=h%12===0?12:h%12;
+ return h+':'+String(m).padStart(2,'0')+' '+ap}
+function exportSportNinja(){
+ const R=build();
+ const real={}; S.teams.forEach(t=>real[t.name.toLowerCase()]=1);
+ const rows=[], skipped=[];
+ R.games.forEach(g=>{
+  if(!g.date){skipped.push(g.home+' v '+g.away+' (not scheduled)');return}
+  rows.push([g.date,g.time,g.home,g.away,g.rink,'Regular Season']);
+ });
+ Object.values(window._po||{}).forEach(br=>br.forEach(g=>{
+  if(!g.date)return;
+  if(!real[String(g.home).toLowerCase()]||!real[String(g.away).toLowerCase()]){
+   skipped.push(g.home+' v '+g.away+' (bracket not decided)');return}
+  rows.push([g.date,g.time,g.home,g.away,g.rink,'Playoff']);
+ }));
+ rows.sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:(a[1]<b[1]?-1:a[1]>b[1]?1:0));
+ const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+ const head=['SN Game ID','Number','Home','Visitor','Date','Time','Location','Facility','City','Game Type'];
+ const out=[head.join(',')].concat(rows.map((r,i)=>
+  ['',i+1,r[2],r[3],snDate(r[0]),snTime(r[1]),S.venue||'',r[4]||'',S.city||'',r[5]].map(q).join(',')));
+ dl((S.name||'league').replace(/\W+/g,'-')+'-sportninja.csv',out.join('\r\n')+'\r\n','text/csv');
+ msg=rows.length+' games exported for SportNinja'+
+  (skipped.length?', '+skipped.length+' skipped':'');
+ if(skipped.length)msg+=' — '+skipped.slice(0,3).join('; ')+(skipped.length>3?' …':'');
+ render();
+}
 function exportCSV(){
  const R=build();
  const keepG=g=>(showWhat!=='practices')&&(!showTeam||g.homeId===showTeam||g.awayId===showTeam);
@@ -406,18 +592,21 @@ function reset(){if(confirm('Reset everything to the starting setup?')){S=JSON.p
 
 /* ---------------- render ---------------- */
 function render(){
- const R=build(), st=standings(R.games);
- window._po={};
+ let R=build(); let st=standings(R.games);
+ window._po={}; window._poSlots={};
  S.divisions.forEach(d0=>{
   const d=R.dv.find(x=>x.id===d0.id);
-  window._po[d0.id]=bracket(d,st[d0.id]||[],R.bydiv[d0.id]||[],(d&&d.scheduled)||0,(d&&d.stride)||1);
+  window._po[d0.id]=bracket(d,st[d0.id]||[],(d&&d.free)||[]);
+  (window._po[d0.id]||[]).forEach(g=>{if(g.date)
+   window._poSlots[g.id]=g.date+'|'+g.time+'|'+(g.rink||'')});
  });
+ R=build();
  const conf=R.games.filter(g=>g.conflicts.length).length+R.practices.filter(p=>p.conflicts.length).length;
  let h='<h1>'+esc(S.name)+'</h1><p class="sub">Ice is one shared pool. Divisions decide who plays whom '+
   'and which nights they may use. Blackouts apply to one team at a time.</p>';
  h+='<div class="board"><div class="brow">'+
   '<div class="cell"><div class="num">'+R.games.length+'</div><div class="cap">Games</div></div>'+
-  '<div class="cell"><div class="num">'+R.slots.length+'</div><div class="cap">Slots</div></div>'+
+  '<div class="cell"><div class="num">'+(R.open||[]).length+'</div><div class="cap">Unused slots</div></div>'+
   '<div class="cell"><div class="num">'+R.practices.length+'</div><div class="cap">Practices</div></div>'+
   '<div class="cell"><div class="num">'+(R.lo===R.hi?R.hi:R.lo+'-'+R.hi)+'</div><div class="cap">Games / team</div></div>'+
   '</div><div class="verdict">'+
@@ -427,7 +616,12 @@ function render(){
     (conf?conf+' item(s) hit a blackout':'no conflicts'))+
   (R.phi?' &middot; practices '+(R.plo===R.phi?R.phi:R.plo+'-'+R.phi)+' per team':'')+
   '<br><span class="mid">'+(R.multi?R.multi+' week(s) where a team plays more than once'
-    :'every team plays at most once a week')+'</span></div></div>';
+    :'every team plays at most once a week')+
+    (R.sameDay?' &middot; '+R.sameDay+' the same day':(R.multi?' &middot; never twice in a day':''))+
+    '<br><span class="mid">'+
+    (R.clash?R.clash+' game(s) share a day with that team\'s practice':'no game clashes with a practice')+
+    (R.onPractice?' &middot; '+R.onPractice+' game(s) on practice ice':'')+
+    '</span></div></div>';
  h+='<div class="tabs">'+[['setup','Setup'],['teams','Teams'],['ice','Ice'],['sched','Schedule'],
   ['stand','Standings'],['po','Playoffs'],['share','Share']]
   .map(([k,l])=>'<button class="tab'+(tab===k?' on':'')+'" onclick="tab=\''+k+'\';render()">'+l+'</button>').join('')+'</div>';
@@ -440,13 +634,21 @@ function render(){
 function setupTab(R){
  let h='<div class="card"><h2>League defaults</h2><p class="hint">Any division can override these.</p>'+
   '<div class="field"><label>League name</label><input value="'+esc(S.name)+'" onchange="set(\'name\',this.value)"></div>'+
+  '<div class="g2"><div class="field"><label>Venue (for SportNinja)</label><input value="'+esc(S.venue||'')+
+   '" onchange="set(\'venue\',this.value)"></div>'+
+  '<div class="field"><label>City</label><input value="'+esc(S.city||'')+
+   '" onchange="set(\'city\',this.value)"></div></div>'+
   '<div class="g2"><div class="field"><label>Season start</label><input type="date" value="'+S.start+
    '" onblur="set(\'start\',this.value)"></div>'+
   '<div class="field"><label>Season end</label><input type="date" value="'+S.end+
    '" onblur="set(\'end\',this.value)"></div></div>'+
   '<div class="g2"><div class="field"><label>Game cap per team</label><input type="number" value="'+S.cap+
    '" onblur="set(\'cap\',Math.max(1,+this.value||1))"></div>'+
-  '<div class="field"><label>Practices per team</label><input type="number" value="'+S.pcap+
+  '<div class="field"><label>Allow same-day doubleheaders</label>'+
+   '<select onchange="set(\'allowDouble\',this.value===\'yes\')">'+
+   '<option value="no"'+(S.allowDouble?'':' selected')+'>No</option>'+
+   '<option value="yes"'+(S.allowDouble?' selected':'')+'>Yes</option></select></div></div>'+
+  '<div class="g2"><div class="field"><label>Practices per team</label><input type="number" value="'+S.pcap+
    '" onblur="set(\'pcap\',Math.max(0,+this.value||0))"></div></div>'+
   '<div class="g2"><div class="field"><label>Playoff teams per division</label><select onchange="set(\'playoffTeams\',+this.value)">'+
    [2,4,8].map(n=>'<option value="'+n+'"'+(S.playoffTeams===n?' selected':'')+'>'+n+'</option>').join('')+
@@ -506,12 +708,15 @@ function teamsTab(){
     '<div class="field" style="margin:0"><label>Division</label><select onchange="tset(\''+t.id+'\',\'div\',this.value)">'+
      S.divisions.map(x=>'<option value="'+x.id+'"'+(t.div===x.id?' selected':'')+'>'+esc(x.name)+'</option>').join('')+
      '</select></div>'+
-    '<div class="field" style="margin:0"><label>Blackout day</label><select onchange="tset(\''+t.id+'\',\'off\',this.value)">'+
-     '<option value="">none</option>'+DAYS.map(x=>'<option'+(t.off===x?' selected':'')+'>'+x+'</option>').join('')+
-     '</select></div></div>'+
-    '<div class="field" style="margin-top:7px"><label>Practices (blank = division default)</label>'+
+    '<div class="field" style="margin:0"><label>Practices (blank = division)</label>'+
     '<input type="number" placeholder="'+tPcap(t)+'" value="'+(t.pcap===''||t.pcap==null?'':t.pcap)+
-    '" onblur="tset(\''+t.id+'\',\'pcap\',this.value)"></div></div>';
+    '" onblur="tset(\''+t.id+'\',\'pcap\',this.value)"></div></div>'+
+    '<div style="margin-top:7px"><label>Plays on</label><div class="daybtns">'+
+     DAYS.map((x,i)=>'<button class="dayb'+(tDays(t).indexOf(x)>=0?' on':'')+
+      '" onclick="tToggle(\''+t.id+'\',\''+x+'\')">'+SH[i]+'</button>').join('')+'</div>'+
+     (String(t.days||'').trim()?'<div class="note" style="margin-top:4px">Only '+esc(t.days)+'</div>':'')+
+    '</div>'+
+    '</div>';
   });
   h+='<button class="addbtn" onclick="tadd(\''+d.id+'\')">+ Add team to '+esc(d.name)+'</button>';
  });
@@ -587,8 +792,13 @@ function iceTab(){
 
 function schedTab(R){
  const rows=[];
- if(showWhat!=='practices')R.games.forEach(g=>rows.push({t:'Game',...g}));
- if(showWhat!=='games'){
+ if(showWhat!=='practices'&&showWhat!=='open')R.games.forEach(g=>rows.push({t:'Game',...g}));
+ if(showWhat==='open'||showWhat==='all'){
+  (R.open||[]).forEach(s=>rows.push({t:'Open',id:'o'+s.date+s.time,div:s.divName||'',
+   date:s.date,day:s.day,time:s.time,rink:s.rink,home:'—',away:'',conflicts:[],
+   openUse:s.use==='practice'?'practice ice':'game ice'}));
+ }
+ if(showWhat!=='games'&&showWhat!=='open'){
   const grp={};
   R.practices.forEach(p=>{(grp[p.slotKey]=grp[p.slotKey]||[]).push(p)});
   Object.values(grp).forEach(g=>{const f=g[0];
@@ -599,13 +809,13 @@ function schedTab(R){
  rows.sort((a,b)=>(a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:
   ((a.time||'')<(b.time||'')?-1:1));
  if(showTeam&&!S.teams.some(t=>t.id===showTeam))showTeam='';
- const mine=r=>!showTeam||(r.t==='Game'?(r.homeId===showTeam||r.awayId===showTeam)
-                                       :(r.ids||[]).indexOf(showTeam)>=0);
+ const mine=r=>!showTeam||(r.t==='Open'?false:r.t==='Game'
+   ?(r.homeId===showTeam||r.awayId===showTeam):(r.ids||[]).indexOf(showTeam)>=0);
  const shown=rows.filter(mine);
  const who=S.teams.find(t=>t.id===showTeam);
  let h='<div class="card"><h2>Schedule</h2><p class="hint">Enter scores as games are played. '+
   'Red lines need a manual move.</p><div class="btnrow" style="margin:0 0 10px">'+
-  [['all','Everything'],['games','Games only'],['practices','Practices only']]
+  [['all','Everything'],['games','Games only'],['practices','Practices only'],['open','Open ice']]
    .map(([k,l])=>'<button class="btn'+(showWhat===k?' dark':'')+'" onclick="showWhat=\''+k+'\';render()">'+l+'</button>').join('')+
   '</div><div class="field" style="max-width:280px"><label>Team</label>'+
   '<select onchange="showTeam=this.value;render()"><option value="">All teams</option>'+
@@ -619,8 +829,11 @@ function schedTab(R){
   '<div class="scroll"><table>'+
   '<tr><th>Date</th><th>Time</th><th>Rink</th><th>Type</th><th>Div</th><th>Home</th><th>Away</th><th></th><th></th></tr>';
  shown.forEach(g=>{const sc=S.scores[g.id]||{h:'',a:''};
-  h+='<tr><td class="mono">'+(g.date?fmt(g.date):'—')+'</td><td class="mono">'+(g.time?fmtT(g.time):'—')+
-   '</td><td>'+esc(g.rink||'')+'</td><td><span class="pill'+(g.t==='Practice'?'':' in')+'">'+g.t+'</span></td>'+
+  h+='<tr'+(g.t==='Open'?' class="openrow"':'')+'><td class="mono">'+(g.date?fmt(g.date):'—')+
+   '</td><td class="mono">'+(g.time?fmtT(g.time):'—')+
+   '</td><td>'+esc(g.rink||'')+'</td><td><span class="pill'+
+   (g.t==='Game'?' in':g.t==='Open'?' open':'')+'">'+(g.t==='Open'?'Open '+(g.openUse||''):g.t)+
+   '</span>'+(g.onPractice?' <span class="pill open">on practice ice</span>':'')+'</td>'+
    '<td>'+esc(g.div)+'</td><td>'+esc(g.home)+'</td><td>'+esc(g.away)+'</td>'+
    (g.t==='Game'
      ?'<td><input class="sc" inputmode="numeric" value="'+(sc.h??'')+'" onchange="scset(\''+g.id+'\',\'h\',this.value)"></td>'+
@@ -642,7 +855,7 @@ function standTab(st,R){
   const rows=st[d.id]||[];
   h+='<div class="card"><h2>'+esc(d.name)+'</h2><div class="scroll"><table>'+
    '<tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>Diff</th>'+
-   '<th>Sched</th><th>Prac</th><th></th></tr>';
+   '<th>Sched</th><th>Prac</th><th>Early</th><th>Late</th><th></th></tr>';
   rows.forEach(r=>{const tm=S.teams.find(x=>x.id===r.id);
    const gsch=R.games.filter(g=>g.homeId===r.id||g.awayId===r.id).length;
    const pr=R.practices.filter(p=>p.teamId===r.id).length, want=tm?tPcap(tm):0;
@@ -650,7 +863,8 @@ function standTab(st,R){
    '</td><td class="mono">'+r.w+'</td><td class="mono">'+r.l+'</td><td class="mono">'+r.t+
    '</td><td class="mono"><b>'+r.pts+'</b></td><td class="mono">'+(r.diff>0?'+':'')+r.diff+
    '</td><td class="mono">'+gsch+'</td><td class="mono'+(want&&pr<want?' flag':'')+'">'+pr+
-   (want?'/'+want:'')+'</td><td>'+
+   (want?'/'+want:'')+'</td><td class="mono">'+((R.tb[r.id]||{}).early||0)+
+   '</td><td class="mono">'+((R.tb[r.id]||{}).late||0)+'</td><td>'+
    (r.seed<=S.playoffTeams?'<span class="pill in">in</span>':'')+'</td></tr>'});
   h+='</table></div></div>';
  });
@@ -685,8 +899,13 @@ function shareTab(){
   '<button class="btn dark" onclick="exportJSON()">Download league file</button>'+
   '<button class="btn" onclick="document.getElementById(\'imp\').click()">Load league file</button>'+
   '<button class="btn" onclick="exportCSV()">Download schedule CSV</button>'+
+  '<button class="btn dark" onclick="exportSportNinja()">SportNinja upload CSV</button>'+
   '<button class="btn" onclick="reset()">Reset</button></div>'+
   '<input id="imp" type="file" accept=".json" style="display:none" onchange="importJSON(event)">'+
+  '<p class="note"><b>SportNinja.</b> The upload file carries games only, never practices, with the '+
+  'rink on each ice line going into the Facility column and the venue and city coming from Setup. '+
+  'Regular season and decided playoff games are included. Anything unscheduled, or a bracket game whose '+
+  'teams are not settled yet, is left out and counted for you.</p>'+
   '<p class="note"><b>Working with coworkers.</b> Send them the link to this page plus your downloaded '+
   'league file. They open the link, click Load league file, and see exactly what you see. When they make '+
   'changes they download and send it back. There is no shared server, so only one person should hold the '+
@@ -701,7 +920,7 @@ const dset=(i,k,v)=>{S.divisions.find(d=>d.id===i)[k]=v;save();render()};
 const dadd=()=>{S.divisions.push({id:nid(),name:'Division '+(S.divisions.length+1),days:'',start:'',end:'',cap:''});save();render()};
 const ddel=i=>{if(S.divisions.length<2)return;S.divisions=S.divisions.filter(d=>d.id!==i);
  S.teams=S.teams.filter(t=>t.div!==i);save();render()};
-const tadd=d=>{S.teams.push({id:nid(),name:'New team',div:d,off:''});save();render()};
+const tadd=d=>{S.teams.push({id:nid(),name:'New team',div:d,days:'',pcap:''});save();render()};
 const tset=(i,k,v)=>{S.teams.find(t=>t.id===i)[k]=v;save();render()};
 const tdel=i=>{S.teams=S.teams.filter(t=>t.id!==i);S.blackouts=S.blackouts.filter(b=>b.team!==i);save();render()};
 const ladd=()=>{S.lines.push({id:nid(),day:0,time:'21:00',mins:80,rink:'',use:'games',pdiv:'',slotTeams:1,only:'',from:'',until:''});save();render()};
